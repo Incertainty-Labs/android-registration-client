@@ -198,6 +198,7 @@ dependencies {
     implementation project(':keymanager')
     implementation project(':packetmanager')
     implementation project(':transliterationmanager')
+    implementation project(':livenessmanager')
 
     implementation 'androidx.legacy:legacy-support-v4:1.0.0'
 
