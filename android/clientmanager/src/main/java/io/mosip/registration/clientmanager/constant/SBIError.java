@@ -19,7 +19,8 @@ public enum SBIError {
     SBI_RCAPTURE_ERROR("REG-SBI-115","RCapture Failed! "),
     SBI_DEDUPE_MATCH("REG-SBI-116", "Biometrics matched with operator; please try again"),
     SBI_DEDUPE_SDK_UNAVAILABLE("REG-SBI-117", "Deduplication is enabled but no SDK with MATCH support is available"),
-    SBI_CANCELLED("REG-SBI-118", "Capture cancelled");
+    SBI_CANCELLED("REG-SBI-118", "Capture cancelled"),
+    SBI_CAPTURE_IN_PROGRESS("REG-SBI-119", "Capture already in progress");
 
     SBIError(String errorCode, String errorMessage) {
         this.setErrorCode(errorCode);

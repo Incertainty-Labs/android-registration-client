@@ -1,5 +1,6 @@
 package io.mosip.registration_client.api_services;
 
+import io.mosip.registration.clientmanager.constant.SBIError;
 import io.mosip.registration_client.model.BiometricsPigeon;
 
 /**
@@ -10,9 +11,21 @@ final class PendingSbiCall {
 
     private BiometricsPigeon.Result<String> result;
 
-    /** @param result the Pigeon result of the call that starts the flow */
-    void start(BiometricsPigeon.Result<String> result) {
+    /**
+     * Starts waiting for a flow. While another call is still waiting, the new one is failed at once with
+     * {@code REG-SBI-119} and the waiting call keeps its place: its SBI flow is still running and will complete it.
+     *
+     * @param result the Pigeon result of the call that starts the flow
+     * @return true if the call now waits for the flow; false if it was rejected
+     */
+    boolean start(BiometricsPigeon.Result<String> result) {
+        if (this.result != null) {
+            result.error(new BiometricsPigeon.FlutterError(SBIError.SBI_CAPTURE_IN_PROGRESS.getErrorCode(),
+                    SBIError.SBI_CAPTURE_IN_PROGRESS.getErrorMessage(), null));
+            return false;
+        }
         this.result = result;
+        return true;
     }
 
     /** @param value the success value sent to Dart */

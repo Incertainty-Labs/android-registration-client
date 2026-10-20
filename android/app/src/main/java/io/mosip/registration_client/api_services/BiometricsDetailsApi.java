@@ -134,10 +134,13 @@ public class BiometricsDetailsApi implements BiometricsPigeon.BiometricsApi {
     @Override
     public void invokeDiscoverSbi(@NonNull String fieldId, @NonNull String modality,
             @NonNull BiometricsPigeon.Result<String> result) {
+        // A capture already running keeps its modality and field; the new call is rejected (REG-SBI-119).
+        if (!pendingCall.start(result)) {
+            return;
+        }
         auditManagerService.audit(AuditEvent.BIOMETRIC_CAPTURE, Components.REGISTRATION);
         currentModality = getModality(modality);
         this.fieldId = fieldId;
-        pendingCall.start(result);
         discoverSBI();
     }
 
