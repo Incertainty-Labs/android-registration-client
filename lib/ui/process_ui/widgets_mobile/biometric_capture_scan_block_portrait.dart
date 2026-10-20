@@ -22,6 +22,7 @@ import 'package:registration_client/pigeon/biometrics_pigeon.dart';
 import 'package:registration_client/provider/biometric_capture_control_provider.dart';
 import 'package:registration_client/provider/global_provider.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
+import 'package:registration_client/utils/sbi_capture_error.dart';
 
 import 'package:registration_client/utils/app_config.dart';
 import 'package:registration_client/utils/biometrics_utils.dart';
@@ -597,8 +598,13 @@ class _BiometricCaptureScanBlockPortraitState
               if (biometricAttributeData.attemptNo <
                   biometricAttributeData.noOfCapturesAllowed) {
                 List<Uint8List?> tempImageList = [];
-                await BiometricsApi().invokeDiscoverSbi(widget.field.id!,
-                    biometricAttributeData.title.replaceAll(" ", ""));
+                try {
+                  await BiometricsApi().invokeDiscoverSbi(widget.field.id!,
+                      biometricAttributeData.title.replaceAll(" ", ""));
+                } catch (e) {
+                  showSbiCaptureError(context, e);
+                  return;
+                }
                 await BiometricsApi()
                     .getBestBiometrics(widget.field.id!,
                     biometricAttributeData.title.replaceAll(" ", ""))

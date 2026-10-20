@@ -16,6 +16,7 @@ import 'package:registration_client/provider/global_provider.dart';
 import 'package:registration_client/utils/app_config.dart';
 import 'package:registration_client/utils/biometrics_utils.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
+import 'package:registration_client/utils/sbi_capture_error.dart';
 
 import 'package:registration_client/provider/auth_provider.dart';
 
@@ -381,8 +382,13 @@ class _OperatorBiometricCaptureScanBlockViewState
           onPressed: () async {
             if (biometricAttributeData.exceptions.contains(false)) {
               List<Uint8List?> tempImageList = [];
-              await BiometricsApi().invokeDiscoverSbi("operatorBiometrics",
-                  biometricAttributeData.title.replaceAll(" ", ""));
+              try {
+                await BiometricsApi().invokeDiscoverSbi("operatorBiometrics",
+                    biometricAttributeData.title.replaceAll(" ", ""));
+              } catch (e) {
+                showSbiCaptureError(context, e);
+                return;
+              }
               await BiometricsApi()
                   .getBestBiometrics("operatorBiometrics",
                       biometricAttributeData.title.replaceAll(" ", ""))
