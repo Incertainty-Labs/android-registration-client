@@ -1,0 +1,48 @@
+plugins {
+    id 'com.android.library'
+}
+
+apply from: '../jacoco.gradle'
+
+android {
+    lintOptions {
+        abortOnError false
+        ignoreWarnings true
+    }
+    namespace 'io.mosip.registration.livenessmanager'
+    compileSdk rootProject.ext.compileSdkVersion
+
+    defaultConfig {
+        minSdk rootProject.ext.minSdkVersion
+        targetSdk rootProject.ext.targetSdkVersion
+
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        consumerProguardFiles "consumer-rules.pro"
+        versionCode 1
+        versionName '1.0'
+    }
+
+    buildTypes {
+        debug {
+            testCoverageEnabled true
+        }
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+    buildToolsVersion buildToolsVersion
+}
+
+dependencies {
+    // Shared liveness engine (API.md §2.2); api so app and clientmanager see its types
+    api 'com.github.Incertainty-Labs.mosip-face-liveness:liveness-core:v0.1.0'
+    // liveness-core compiles against ONNX Runtime but does not ship it; Android supplies the runtime
+    implementation 'com.microsoft.onnxruntime:onnxruntime-android:1.28.0'
+    testImplementation 'junit:junit:4.13.2'
+    androidTestImplementation 'androidx.test.ext:junit:1.1.5'
+}

@@ -251,6 +251,7 @@ dependencies {
     // added packet-manager Android library module as a dependency
     implementation project(':packetmanager')
     implementation project(':keymanager')
+    implementation project(':livenessmanager')
 
     implementation 'com.github.kenglxn.QRGen:android:3.0.1'
     implementation("io.mosip.kernel:kernel-biometrics-api:1.2.0.3"){
