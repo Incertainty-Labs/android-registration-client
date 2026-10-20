@@ -21,6 +21,7 @@ import 'package:registration_client/utils/biometrics_utils.dart';
 
 import '../../../provider/global_provider.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
+import 'package:registration_client/utils/sbi_capture_error.dart';
 
 class BiometricScanMiddleBlock extends StatefulWidget {
   const BiometricScanMiddleBlock(
@@ -190,8 +191,13 @@ class _BiometricScanMiddleBlockState extends State<BiometricScanMiddleBlock> {
                       onPressed: () async {
                         if (widget.biometricAttributeData.attemptNo <
                             widget.biometricAttributeData.noOfCapturesAllowed) {
-                          await BiometricsApi().invokeDiscoverSbi(
-                              widget.field.id!, widget.parameterTitle);
+                          try {
+                            await BiometricsApi().invokeDiscoverSbi(
+                                widget.field.id!, widget.parameterTitle);
+                          } catch (e) {
+                            showSbiCaptureError(context, e);
+                            return;
+                          }
                           await BiometricsApi()
                               .extractImageValues(
                                   widget.field.id!, widget.parameterTitle)
@@ -295,8 +301,13 @@ class _BiometricScanMiddleBlockState extends State<BiometricScanMiddleBlock> {
                 if (widget.biometricAttributeData.attemptNo <
                     widget.biometricAttributeData.noOfCapturesAllowed) {
                   List<Uint8List?> temp = [];
-                  await BiometricsApi().invokeDiscoverSbi(
-                      widget.field.id!, widget.parameterTitle);
+                  try {
+                    await BiometricsApi().invokeDiscoverSbi(
+                        widget.field.id!, widget.parameterTitle);
+                  } catch (e) {
+                    showSbiCaptureError(context, e);
+                    return;
+                  }
                   await BiometricsApi()
                       .getBestBiometrics(
                           widget.field.id!, widget.parameterTitle)
