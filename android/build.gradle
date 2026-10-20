@@ -7,6 +7,8 @@ buildscript {
     }
 
     dependencies {
+        // Newer D8/R8 than AGP 7.2.2 bundles: dexes Java 17 classes (onnxruntime-android) and JDK 21 MethodParameters (liveness-core)
+        classpath 'com.android.tools:r8:8.2.47'
         classpath 'com.android.tools.build:gradle:7.2.2'
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
         classpath "com.ibotta:plugin:1.2.0"
