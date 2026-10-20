@@ -6,6 +6,7 @@ import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 enum SbiCaptureError {
   cancelled,
   deviceNotFound,
+  inProgress,
   failed;
 
   /// Classifies the error thrown by `BiometricsApi().invokeDiscoverSbi`.
@@ -16,6 +17,8 @@ enum SbiCaptureError {
         return SbiCaptureError.cancelled;
       case 'REG-SBI-104':
         return SbiCaptureError.deviceNotFound;
+      case 'REG-SBI-119':
+        return SbiCaptureError.inProgress;
       default:
         return SbiCaptureError.failed;
     }
@@ -28,6 +31,8 @@ enum SbiCaptureError {
         return l10n.sbi_capture_cancelled;
       case SbiCaptureError.deviceNotFound:
         return l10n.sbi_device_not_found;
+      case SbiCaptureError.inProgress:
+        return l10n.sbi_capture_in_progress;
       case SbiCaptureError.failed:
         return l10n.sbi_capture_failed;
     }

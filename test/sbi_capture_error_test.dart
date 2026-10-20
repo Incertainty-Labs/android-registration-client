@@ -17,6 +17,13 @@ void main() {
     );
   });
 
+  test('TC-AND-14: a second Scan while a capture runs maps to in progress', () {
+    expect(
+      SbiCaptureError.from(PlatformException(code: 'REG-SBI-119', message: 'Capture already in progress')),
+      SbiCaptureError.inProgress,
+    );
+  });
+
   test('TC-AND-14: any other capture error maps to failed', () {
     for (final error in [
       PlatformException(code: 'REG-SBI-115', message: 'RCapture Failed! '),

@@ -221,6 +221,21 @@ public class BiometricsDetailsApiSbiFlowTest {
         assertEquals("REG-SBI-104", errorCode());
     }
 
+    @Test
+    public void tcAnd14_whenScanIsTappedTwice_secondCallIsRejectedAndNoSecondDiscoveryStarts() {
+        @SuppressWarnings("unchecked")
+        BiometricsPigeon.Result<String> second = mock(BiometricsPigeon.Result.class);
+        api.invokeDiscoverSbi("individualBiometrics", "Face", result);
+
+        api.invokeDiscoverSbi("individualBiometrics", "Face", second);
+
+        ArgumentCaptor<Throwable> error = ArgumentCaptor.forClass(Throwable.class);
+        verify(second).error(error.capture());
+        assertEquals("REG-SBI-119", ((BiometricsPigeon.FlutterError) error.getValue()).code);
+        verify(activity, times(1)).startActivityForResult(any(Intent.class), eq(DISCOVER));
+        verify(result, never()).error(any(Throwable.class));
+    }
+
     /** Discovery and device info succeed, so the next activity result is the capture's. */
     private void startCaptureFlow() throws Exception {
         when(registrationService.getRegistrationDto()).thenReturn(mock(RegistrationDto.class));

@@ -6,6 +6,7 @@ import org.mockito.ArgumentCaptor;
 import io.mosip.registration_client.model.BiometricsPigeon;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -39,6 +40,24 @@ public class PendingSbiCallTest {
         BiometricsPigeon.FlutterError flutterError = (BiometricsPigeon.FlutterError) error.getValue();
         assertEquals("REG-SBI-118", flutterError.code);
         assertEquals("Capture cancelled", flutterError.getMessage());
+    }
+
+    @Test
+    public void tcAnd14_whileACallIsPending_aSecondStartIsRejectedAndTheFirstStillCompletes() {
+        @SuppressWarnings("unchecked")
+        BiometricsPigeon.Result<String> second = mock(BiometricsPigeon.Result.class);
+        PendingSbiCall call = new PendingSbiCall();
+        call.start(result);
+
+        boolean started = call.start(second);
+        call.complete("Ok");
+
+        assertFalse(started);
+        ArgumentCaptor<Throwable> error = ArgumentCaptor.forClass(Throwable.class);
+        verify(second).error(error.capture());
+        assertEquals("REG-SBI-119", ((BiometricsPigeon.FlutterError) error.getValue()).code);
+        verify(second, never()).success(any());
+        verify(result).success("Ok");
     }
 
     @Test
