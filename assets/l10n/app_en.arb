@@ -365,6 +365,7 @@
   "sbi_device_not_found": "Biometric device not found. Check that the device app is installed.",
   "sbi_capture_failed": "Biometric capture failed. Please try again.",
   "sbi_capture_in_progress": "A capture is already in progress. Please wait for it to finish.",
+  "sbi_certification_not_accepted": "This biometric device is not accepted here. Use a certified (L0 or L1) device.",
   "search_for_key": "Search for Key",
   "sync_restart_dialog_message": "The app will restart once you click Restart, and you will be redirected to the login page.",
   "sync_restart_button": "Restart",

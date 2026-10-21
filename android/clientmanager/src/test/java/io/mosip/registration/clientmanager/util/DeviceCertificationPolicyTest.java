@@ -2,6 +2,7 @@ package io.mosip.registration.clientmanager.util;
 
 import org.junit.Test;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
@@ -40,5 +41,15 @@ public class DeviceCertificationPolicyTest {
             assertTrue("L0 for '" + blank + "'", policy.accepts("L0"));
             assertTrue("L1 for '" + blank + "'", policy.accepts("L1"));
         }
+    }
+
+    @Test
+    public void tcAnd03_withUnknownLevelsConfigured_reportsAWarningPerLevel() {
+        DeviceCertificationPolicy policy = DeviceCertificationPolicy.fromConfig("L1, L2,X9");
+
+        assertEquals(2, policy.warnings().size());
+        assertTrue(policy.warnings().get(0).contains("L2"));
+        assertTrue(policy.warnings().get(1).contains("X9"));
+        assertTrue(DeviceCertificationPolicy.fromConfig("L0,L1").warnings().isEmpty());
     }
 }

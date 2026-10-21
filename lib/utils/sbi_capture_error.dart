@@ -6,6 +6,7 @@ import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 enum SbiCaptureError {
   cancelled,
   deviceNotFound,
+  certificationNotAccepted,
   inProgress,
   failed;
 
@@ -17,6 +18,8 @@ enum SbiCaptureError {
         return SbiCaptureError.cancelled;
       case 'REG-SBI-104':
         return SbiCaptureError.deviceNotFound;
+      case 'REG-SBI-120':
+        return SbiCaptureError.certificationNotAccepted;
       case 'REG-SBI-119':
         return SbiCaptureError.inProgress;
       default:
@@ -31,6 +34,8 @@ enum SbiCaptureError {
         return l10n.sbi_capture_cancelled;
       case SbiCaptureError.deviceNotFound:
         return l10n.sbi_device_not_found;
+      case SbiCaptureError.certificationNotAccepted:
+        return l10n.sbi_certification_not_accepted;
       case SbiCaptureError.inProgress:
         return l10n.sbi_capture_in_progress;
       case SbiCaptureError.failed:

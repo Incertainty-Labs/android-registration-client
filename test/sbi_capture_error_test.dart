@@ -24,6 +24,13 @@ void main() {
     );
   });
 
+  test('TC-AND-03: a device whose certification is not accepted maps to certificationNotAccepted', () {
+    expect(
+      SbiCaptureError.from(PlatformException(code: 'REG-SBI-120', message: 'Device certification not accepted')),
+      SbiCaptureError.certificationNotAccepted,
+    );
+  });
+
   test('TC-AND-14: any other capture error maps to failed', () {
     for (final error in [
       PlatformException(code: 'REG-SBI-115', message: 'RCapture Failed! '),
