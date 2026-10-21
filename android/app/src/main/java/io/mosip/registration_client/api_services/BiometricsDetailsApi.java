@@ -8,13 +8,13 @@
 package io.mosip.registration_client.api_services;
 
 import android.app.Activity;
+import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.net.Uri;
 import android.os.Bundle;
 import android.util.Log;
-import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 
@@ -45,6 +45,7 @@ import io.mosip.registration.clientmanager.constant.AuditEvent;
 import io.mosip.registration.clientmanager.constant.Components;
 import io.mosip.registration.clientmanager.constant.Modality;
 import io.mosip.registration.clientmanager.constant.RegistrationConstants;
+import io.mosip.registration.clientmanager.constant.SBIError;
 import io.mosip.registration.clientmanager.dto.registration.BiometricsDto;
 import io.mosip.registration.clientmanager.dto.registration.RegistrationDto;
 import io.mosip.registration.clientmanager.dto.sbi.CaptureRequest;
@@ -86,7 +87,7 @@ public class BiometricsDetailsApi implements BiometricsPigeon.BiometricsApi {
     private final List<Bitmap> listBitmaps1 = new ArrayList<>();
     private byte[] byteArrayTester;
     private List<byte[]> listByteArrayTester1 = new ArrayList<>();
-    BiometricsPigeon.Result<String> biometricResult;
+    private final PendingSbiCall pendingCall = new PendingSbiCall();
 
     public List<String> OPERATOR_EXCEPTIONS=new ArrayList<>();
 
@@ -133,11 +134,44 @@ public class BiometricsDetailsApi implements BiometricsPigeon.BiometricsApi {
     @Override
     public void invokeDiscoverSbi(@NonNull String fieldId, @NonNull String modality,
             @NonNull BiometricsPigeon.Result<String> result) {
+        // A capture already running keeps its modality and field; the new call is rejected (REG-SBI-119).
+        if (!pendingCall.start(result)) {
+            return;
+        }
         auditManagerService.audit(AuditEvent.BIOMETRIC_CAPTURE, Components.REGISTRATION);
         currentModality = getModality(modality);
         this.fieldId = fieldId;
         discoverSBI();
-        biometricResult = result;
+    }
+
+    /**
+     * Every result of the SBI activities started here (discovery 1, device info 2, capture 3, device list 4 and 5).
+     * A discovery, info or capture screen closed without RESULT_OK fails the waiting call, so Dart never hangs.
+     */
+    public void onSbiActivityResult(int requestCode, int resultCode, Bundle extras) {
+        if (resultCode != Activity.RESULT_OK) {
+            if (requestCode >= 1 && requestCode <= 3) {
+                pendingCall.fail(SBIError.SBI_CANCELLED.getErrorCode(), SBIError.SBI_CANCELLED.getErrorMessage());
+            }
+            return;
+        }
+        switch (requestCode) {
+            case 1:
+                parseDiscoverResponse(extras);
+                break;
+            case 2:
+                parseDeviceInfoResponse(extras);
+                break;
+            case 3:
+                parseRCaptureResponse(extras);
+                break;
+            case 4:
+                parseDiscoverResponseForList(extras);
+                break;
+            case 5:
+                handleDeviceInfoResponseForList(extras);
+                break;
+        }
     }
 
     @Override
@@ -919,15 +953,22 @@ public class BiometricsDetailsApi implements BiometricsPigeon.BiometricsApi {
             intent.putExtra(RegistrationConstants.SBI_INTENT_REQUEST_KEY,
                     objectMapper.writeValueAsBytes(discoverRequest));
             activity.startActivityForResult(intent, 1);
+        } catch (ActivityNotFoundException ex) {
+            auditManagerService.audit(AuditEvent.DISCOVER_SBI_FAILED, Components.REGISTRATION, ex.getMessage());
+            Log.e(TAG, ex.getMessage(), ex);
+            pendingCall.fail(SBIError.DEVICE_NOT_FOUND.getErrorCode(), SBIError.DEVICE_NOT_FOUND.getErrorMessage());
         } catch (Exception ex) {
             auditManagerService.audit(AuditEvent.DISCOVER_SBI_FAILED, Components.REGISTRATION, ex.getMessage());
             Log.e(TAG, ex.getMessage(), ex);
+            pendingCall.fail(SBIError.SBI_REQUEST_FAILED.getErrorCode(),
+                    SBIError.SBI_REQUEST_FAILED.getErrorMessage() + ex.getMessage());
         }
     }
 
     private void info(String callbackId) {
         if (callbackId == null) {
             Log.e(TAG, "No SBI found");
+            pendingCall.fail(SBIError.DEVICE_NOT_FOUND.getErrorCode(), SBIError.DEVICE_NOT_FOUND.getErrorMessage());
             return;
         }
 
@@ -936,6 +977,10 @@ public class BiometricsDetailsApi implements BiometricsPigeon.BiometricsApi {
             intent.setAction(callbackId + RegistrationConstants.D_INFO_INTENT_ACTION);
             queryPackage(intent);
             activity.startActivityForResult(intent, 2);
+        } catch (ActivityNotFoundException ex) {
+            auditManagerService.audit(AuditEvent.DEVICE_INFO_FAILED, Components.REGISTRATION, ex.getMessage());
+            Log.e(TAG, ex.getMessage(), ex);
+            pendingCall.fail(SBIError.DEVICE_NOT_FOUND.getErrorCode(), SBIError.DEVICE_NOT_FOUND.getErrorMessage());
         } catch (ClientCheckedException ex) {
             auditManagerService.audit(AuditEvent.DEVICE_INFO_FAILED, Components.REGISTRATION, ex.getMessage());
             Log.e(TAG, ex.getMessage(), ex);
@@ -945,6 +990,7 @@ public class BiometricsDetailsApi implements BiometricsPigeon.BiometricsApi {
     private void rcapture(String callbackId, String deviceId) {
         if (deviceId == null || callbackId == null) {
             Log.e(TAG, "No SBI found!");
+            pendingCall.fail(SBIError.DEVICE_NOT_FOUND.getErrorCode(), SBIError.DEVICE_NOT_FOUND.getErrorMessage());
             return;
         }
 
@@ -969,9 +1015,15 @@ public class BiometricsDetailsApi implements BiometricsPigeon.BiometricsApi {
             }
             intent.putExtra("input", objectMapper.writeValueAsBytes(captureRequest));
             activity.startActivityForResult(intent, 3);
+        } catch (ActivityNotFoundException ex) {
+            auditManagerService.audit(AuditEvent.R_CAPTURE_FAILED, Components.REGISTRATION, ex.getMessage());
+            Log.e(TAG, ex.getMessage(), ex);
+            pendingCall.fail(SBIError.DEVICE_NOT_FOUND.getErrorCode(), SBIError.DEVICE_NOT_FOUND.getErrorMessage());
         } catch (Exception ex) {
             auditManagerService.audit(AuditEvent.R_CAPTURE_FAILED, Components.REGISTRATION, ex.getMessage());
             Log.e(TAG, ex.getMessage(), ex);
+            pendingCall.fail(SBIError.SBI_REQUEST_FAILED.getErrorCode(),
+                    SBIError.SBI_REQUEST_FAILED.getErrorMessage() + ex.getMessage());
         }
     }
 
@@ -982,6 +1034,8 @@ public class BiometricsDetailsApi implements BiometricsPigeon.BiometricsApi {
         } catch (BiometricsServiceException e) {
             auditManagerService.audit(AuditEvent.DISCOVER_SBI_PARSE_FAILED, Components.REGISTRATION, e.getMessage());
             Log.e(TAG, "Failed to parse discover response", e);
+            pendingCall.fail(e.getErrorCode(), e.getMessage());
+            return;
         }
         info(callbackId);
     }
@@ -995,9 +1049,17 @@ public class BiometricsDetailsApi implements BiometricsPigeon.BiometricsApi {
             callbackId = result[0];
             serialNo = result[1];
             Log.i(TAG, callbackId + " --> " + serialNo);
+        } catch (BiometricsServiceException e) {
+            auditManagerService.audit(AuditEvent.DEVICE_INFO_PARSE_FAILED, Components.REGISTRATION, e.getMessage());
+            Log.e(TAG, "Failed to parse device info response", e);
+            pendingCall.fail(e.getErrorCode(), e.getMessage());
+            return;
         } catch (Exception e) {
             auditManagerService.audit(AuditEvent.DEVICE_INFO_PARSE_FAILED, Components.REGISTRATION, e.getMessage());
             Log.e(TAG, "Failed to parse device info response", e);
+            pendingCall.fail(SBIError.SBI_DINFO_INVALID_REPSONSE.getErrorCode(),
+                    SBIError.SBI_DINFO_INVALID_REPSONSE.getErrorMessage());
+            return;
         }
         rcapture(callbackId, serialNo);
     }
@@ -1097,16 +1159,13 @@ public class BiometricsDetailsApi implements BiometricsPigeon.BiometricsApi {
                 }
 
 
-                biometricResult.success("Ok");
+                pendingCall.complete("Ok");
             } else {
                 currentAttempt = this.registrationService.getRegistrationDto().getBioAttempt(fieldId, currentModality);
 
                 if (biometricsDtoList.isEmpty()) {
-                    Toast.makeText(
-                            activity.getApplicationContext(),
-                            "No biometrics captured. Please try again.",
-                            Toast.LENGTH_SHORT
-                    ).show();
+                    pendingCall.fail(SBIError.SBI_RCAPTURE_ERROR.getErrorCode(),
+                            "No biometrics captured. Please try again.");
                     return;
                 }
 
@@ -1124,17 +1183,18 @@ public class BiometricsDetailsApi implements BiometricsPigeon.BiometricsApi {
                         Log.e(TAG, ex.getMessage(), ex);
                     }
                 });
-                biometricResult.success("Ok");
+                pendingCall.complete("Ok");
             }
 
         } catch (BiometricsServiceException e) {
             auditManagerService.audit(AuditEvent.R_CAPTURE_PARSE_FAILED, Components.REGISTRATION, e.getMessage());
             Log.e(TAG, "R-Capture failed: " + e.getErrorCode(), e);
             String message = e.getMessage() != null ? e.getMessage() : "Biometric capture failed";
-            Toast.makeText(activity.getApplicationContext(), message, Toast.LENGTH_SHORT).show();
+            pendingCall.fail(e.getErrorCode(), message);
         } catch (Exception e) {
             auditManagerService.audit(AuditEvent.R_CAPTURE_PARSE_FAILED, Components.REGISTRATION, e.getMessage());
             Log.e(TAG, "Failed to parse rcapture response", e);
+            pendingCall.fail(SBIError.SBI_RCAPTURE_ERROR.getErrorCode(), SBIError.SBI_RCAPTURE_ERROR.getErrorMessage());
         }
 
     }
