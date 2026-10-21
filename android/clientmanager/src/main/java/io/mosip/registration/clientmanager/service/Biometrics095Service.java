@@ -53,6 +53,7 @@ import io.mosip.registration.clientmanager.dto.sbi.DigitalId;
 import io.mosip.registration.clientmanager.dto.sbi.InfoResponse;
 import io.mosip.registration.clientmanager.exception.BiometricsServiceException;
 import io.mosip.registration.clientmanager.repository.GlobalParamRepository;
+import io.mosip.registration.clientmanager.util.DeviceCertificationPolicy;
 import io.mosip.registration.clientmanager.repository.UserBiometricRepository;
 import io.mosip.registration.clientmanager.spi.AuditManagerService;
 import io.mosip.registration.clientmanager.spi.BiometricsService;
@@ -72,7 +73,6 @@ public class Biometrics095Service extends BiometricsService {
     private static final String DEFAULT_SERVER_ACTIVE_PROFILE = "Staging";
     private static final String SPEC_VERSION = "0.9.5";
     private static final String DEVICE_STATUS_READY = "Ready";
-    private static final String DEVICE_CERTIFICATE = "L0";
     private static final String DEFAULT_PURPOSE = "Registration";
 
     private String rCaptureTrustDomain = TRUST_DOMAIN_DEVICE;
@@ -258,9 +258,20 @@ public class Biometrics095Service extends BiometricsService {
             byte[] decodedPayload = Base64.getUrlDecoder().decode(payload);
             DeviceDto deviceDto = objectMapper.readValue(decodedPayload, DeviceDto.class);
 
+            DeviceCertificationPolicy certificationPolicy = certificationPolicy();
+            if (!certificationPolicy.accepts(deviceDto.getCertification())) {
+                // The reported level goes into the audit (catch below), so a refused device is traceable
+                throw new BiometricsServiceException(SBIError.SBI_CERTIFICATION_NOT_ACCEPTED.getErrorCode(),
+                        SBIError.SBI_CERTIFICATION_NOT_ACCEPTED.getErrorMessage() + " (device refused: certification "
+                                + deviceDto.getCertification() + ", accepted " + certificationPolicy.acceptedLevels() + ")");
+            }
             if (!isDeviceValid(deviceDto)) {
+                // What the device reported goes into the audit (catch below), so a refused device is traceable
                 throw new BiometricsServiceException(SBIError.SBI_DINFO_INVALID_REPSONSE.getErrorCode(),
-                        SBIError.SBI_DINFO_INVALID_REPSONSE.getErrorMessage());
+                        SBIError.SBI_DINFO_INVALID_REPSONSE.getErrorMessage() + " (device refused: spec "
+                                + Arrays.toString(deviceDto.getSpecVersion()) + ", status " + deviceDto.getDeviceStatus()
+                                + ", certification " + deviceDto.getCertification()
+                                + ", purpose " + deviceDto.getPurpose() + ")");
             }
 
             callbackId = deviceDto.getCallbackId().replace(".info", "");
@@ -293,13 +304,20 @@ public class Biometrics095Service extends BiometricsService {
         boolean isDeviceStatusValid = DEVICE_STATUS_READY
                 .equalsIgnoreCase(deviceDto.getDeviceStatus());
 
-        boolean isCertificationValid = DEVICE_CERTIFICATE
-                .equalsIgnoreCase(deviceDto.getCertification());
-
         boolean isPurposeValid = DEFAULT_PURPOSE
                 .equalsIgnoreCase(deviceDto.getPurpose());
 
-        return isSpecVersionValid && isDeviceStatusValid && isCertificationValid && isPurposeValid;
+        return isSpecVersionValid && isDeviceStatusValid && isPurposeValid;
+    }
+
+    /** The accepted SBI certification levels from config (default L0,L1); logs a warning per unknown level. */
+    private DeviceCertificationPolicy certificationPolicy() {
+        DeviceCertificationPolicy policy = DeviceCertificationPolicy.fromConfig(globalParamRepository != null
+                ? globalParamRepository.getCachedStringGlobalParam(DeviceCertificationPolicy.CONFIG_KEY) : null);
+        for (String warning : policy.warnings()) {
+            Log.w(TAG, warning);
+        }
+        return policy;
     }
 
     public String handleDiscoveryResponse(Modality modality, byte[] response) throws BiometricsServiceException {

@@ -7,7 +7,6 @@
 
 package io.mosip.registration_client;
 
-import android.app.Activity;
 import android.app.AlarmManager;
 import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
@@ -425,24 +424,6 @@ public class MainActivity extends FlutterActivity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        if (resultCode == Activity.RESULT_OK) {
-            switch (requestCode) {
-                case 1:
-                    biometricsDetailsApi.parseDiscoverResponse(data.getExtras());
-                    break;
-                case 2:
-                    biometricsDetailsApi.parseDeviceInfoResponse(data.getExtras());
-                    break;
-                case 3:
-                    biometricsDetailsApi.parseRCaptureResponse(data.getExtras());
-                    break;
-                case 4:
-                    biometricsDetailsApi.parseDiscoverResponseForList(data.getExtras());
-                    break;
-                case 5:
-                    biometricsDetailsApi.handleDeviceInfoResponseForList(data.getExtras());
-                    break;
-            }
-        }
+        biometricsDetailsApi.onSbiActivityResult(requestCode, resultCode, data == null ? null : data.getExtras());
     }
 }
