@@ -34,6 +34,7 @@ public final class LivenessScreenModel {
     private String statusKey = POSITION_KEY;
     private Object[] statusArgs = new Object[0];
     private ScreenState current;
+    private SessionState lastState;
 
     /**
      * @param state  the engine's new state
@@ -41,8 +42,10 @@ public final class LivenessScreenModel {
      * @return the screen to show
      */
     public ScreenState onStateChanged(SessionState state, UserPrompt prompt) {
-        boolean inAction = current != null
-                && (state == SessionState.ACTIVE_CHALLENGE || state == SessionState.NEUTRAL_HOLD);
+        // Within a passive check or a hold, the screen and its ring stay; only entering one starts it afresh
+        boolean sameState = current != null && state == lastState;
+        boolean keepScreen = current != null && (state == SessionState.ACTIVE_CHALLENGE
+                || state == SessionState.NEUTRAL_HOLD || (state == SessionState.PASSIVE_CHECK && sameState));
         if (state == SessionState.PASSED || state == SessionState.FAILED) {
             // The engine has decided. LivenessActivity returns the result; Flutter shows S9 to S12 (UI_UX_SPEC §6.3)
             current = ScreenState.builder(prompt.key(),
@@ -64,16 +67,17 @@ public final class LivenessScreenModel {
             current = ScreenState.builder(prompt.key(), ScreenState.Tone.DEVICE_ERROR).statusArgs(prompt.args())
                     .buttons(Arrays.asList(ScreenState.Button.RETRY, ScreenState.Button.CANCEL))
                     .build();
-        } else if (prompt.level() == PromptLevel.GUIDANCE && inAction) {
+        } else if (prompt.level() == PromptLevel.GUIDANCE && keepScreen) {
             current = ScreenState.Builder.from(current).guidance(prompt.key()).build();
         } else if (prompt.level() == PromptLevel.SUCCESS && current != null) {
             current = ScreenState.Builder.from(current).toast(prompt.key()).build();
-        } else if (state == SessionState.NEUTRAL_HOLD && current != null) {
+        } else if (state == SessionState.NEUTRAL_HOLD && current != null && !sameState) {
             current = ScreenState.Builder.from(current)
                     .prompt(prompt.key(), ScreenState.Cue.NONE).ring(0f).guidance(null).build();
-        } else if (state == SessionState.ACTIVE_CHALLENGE && current != null) {
+        } else if (keepScreen && state != SessionState.PASSIVE_CHECK) {
             // The engine announces each challenge with its prompt just before onChallenge, and INFO during a
-            // challenge means the guidance is resolved: clear only the guidance, never make the prompt a status
+            // challenge or the hold means the guidance is resolved: clear only the guidance, never make the
+            // prompt a status
             current = ScreenState.Builder.from(current).guidance(null).build();
         } else if (prompt.level() == PromptLevel.GUIDANCE) {
             current = ScreenState.builder(statusKey, ScreenState.Tone.GUIDANCE).statusArgs(statusArgs)
@@ -83,10 +87,11 @@ public final class LivenessScreenModel {
             statusArgs = prompt.args();
             ScreenState.Builder screen = ScreenState.builder(statusKey, ScreenState.Tone.INFO).statusArgs(statusArgs);
             if (state == SessionState.PASSIVE_CHECK) {
-                screen.prompt(NO_ACTION_KEY, ScreenState.Cue.NONE);
+                screen.prompt(NO_ACTION_KEY, ScreenState.Cue.NONE).ring(sameState ? current.ringProgress() : 0f);
             }
             current = screen.build();
         }
+        lastState = state;
         return current;
     }
 
