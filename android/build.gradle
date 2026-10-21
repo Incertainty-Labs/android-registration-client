@@ -50,6 +50,17 @@ allprojects {
     }
 }
 
+// Server for BuildConfig.BASE_URL: -Pmosip.serverBaseURL=..., else mosip.serverBaseURL in local.properties (not in
+// git), else MOSIP's default. Lets a demo build point at Collab without editing this file.
+def localProps = new Properties()
+def localPropsFile = rootProject.file('local.properties')
+if (localPropsFile.exists()) {
+    localPropsFile.withInputStream { localProps.load(it) }
+}
+def serverUrl = findProperty('mosip.serverBaseURL') ?:
+        localProps.getProperty('mosip.serverBaseURL') ?:
+        'https://api-internal.sandbox.xyz.net'
+
 ext {
     compileSdkVersion = 34
     buildToolsVersion = "34.0.0"
@@ -61,7 +72,7 @@ ext {
     clientmanagerLibVersionCode = 1
     clientmanagerLibVersionName = "\"1.0.0\""
 
-    serverBaseURL = "\"https://api-internal.sandbox.xyz.net\""
+    serverBaseURL = "\"${serverUrl}\""
     serverHealthCheckPath = "\"/v1/syncdata/actuator/health\""
     serverActuatorInfoPath = "\"/v1/syncdata/actuator/info\""
     debugPassword = "\"your-debug-password\""
