@@ -75,6 +75,11 @@ public final class DeviceCertificationPolicy {
         return certification != null && accepted.contains(normalise(certification));
     }
 
+    /** @return the accepted levels, comma-separated in config order, e.g. {@code L0,L1} (for messages and audit) */
+    public String acceptedLevels() {
+        return String.join(",", accepted);
+    }
+
     /** @return one message per configured level other than L0 and L1, in config order; unmodifiable */
     public List<String> warnings() {
         return warnings;

@@ -258,6 +258,13 @@ public class Biometrics095Service extends BiometricsService {
             byte[] decodedPayload = Base64.getUrlDecoder().decode(payload);
             DeviceDto deviceDto = objectMapper.readValue(decodedPayload, DeviceDto.class);
 
+            DeviceCertificationPolicy certificationPolicy = certificationPolicy();
+            if (!certificationPolicy.accepts(deviceDto.getCertification())) {
+                // The reported level goes into the audit (catch below), so a refused device is traceable
+                throw new BiometricsServiceException(SBIError.SBI_CERTIFICATION_NOT_ACCEPTED.getErrorCode(),
+                        SBIError.SBI_CERTIFICATION_NOT_ACCEPTED.getErrorMessage() + " (device refused: certification "
+                                + deviceDto.getCertification() + ", accepted " + certificationPolicy.acceptedLevels() + ")");
+            }
             if (!isDeviceValid(deviceDto)) {
                 // What the device reported goes into the audit (catch below), so a refused device is traceable
                 throw new BiometricsServiceException(SBIError.SBI_DINFO_INVALID_REPSONSE.getErrorCode(),
@@ -297,17 +304,20 @@ public class Biometrics095Service extends BiometricsService {
         boolean isDeviceStatusValid = DEVICE_STATUS_READY
                 .equalsIgnoreCase(deviceDto.getDeviceStatus());
 
-        DeviceCertificationPolicy certificationPolicy = DeviceCertificationPolicy.fromConfig(
-                globalParamRepository.getCachedStringGlobalParam(DeviceCertificationPolicy.CONFIG_KEY));
-        for (String warning : certificationPolicy.warnings()) {
-            Log.w(TAG, warning);
-        }
-        boolean isCertificationValid = certificationPolicy.accepts(deviceDto.getCertification());
-
         boolean isPurposeValid = DEFAULT_PURPOSE
                 .equalsIgnoreCase(deviceDto.getPurpose());
 
-        return isSpecVersionValid && isDeviceStatusValid && isCertificationValid && isPurposeValid;
+        return isSpecVersionValid && isDeviceStatusValid && isPurposeValid;
+    }
+
+    /** The accepted SBI certification levels from config (default L0,L1); logs a warning per unknown level. */
+    private DeviceCertificationPolicy certificationPolicy() {
+        DeviceCertificationPolicy policy = DeviceCertificationPolicy.fromConfig(globalParamRepository != null
+                ? globalParamRepository.getCachedStringGlobalParam(DeviceCertificationPolicy.CONFIG_KEY) : null);
+        for (String warning : policy.warnings()) {
+            Log.w(TAG, warning);
+        }
+        return policy;
     }
 
     public String handleDiscoveryResponse(Modality modality, byte[] response) throws BiometricsServiceException {

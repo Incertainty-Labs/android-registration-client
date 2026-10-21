@@ -1,6 +1,7 @@
 package io.mosip.registration.clientmanager.service;
 
 import android.content.Context;
+import android.util.Log;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -10,6 +11,7 @@ import org.junit.runner.RunWith;
 import org.robolectric.RobolectricTestRunner;
 import org.robolectric.RuntimeEnvironment;
 import org.robolectric.annotation.Config;
+import org.robolectric.shadows.ShadowLog;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
@@ -30,6 +32,7 @@ import io.mosip.registration.keymanager.spi.ClientCryptoManagerService;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -82,9 +85,45 @@ public class Biometrics095ServiceDeviceCertificationTest {
         BiometricsServiceException refused = assertThrows(BiometricsServiceException.class,
                 () -> service.handleDeviceInfoResponse(Modality.FACE, deviceInfoResponse("L0")));
 
-        assertEquals("REG-SBI-113", refused.getErrorCode());
+        assertEquals("REG-SBI-120", refused.getErrorCode());
         verify(audit).audit(eq(AuditEvent.DEVICE_INFO_PARSE_FAILED), eq(Components.REGISTRATION),
                 contains("certification L0"));
+    }
+
+    @Test
+    public void tcAnd03_withL2DeviceAndNoConfig_refusesItAsNotAccepted() throws Exception {
+        BiometricsServiceException refused = assertThrows(BiometricsServiceException.class,
+                () -> service.handleDeviceInfoResponse(Modality.FACE, deviceInfoResponse("L2")));
+
+        assertEquals("REG-SBI-120", refused.getErrorCode());
+    }
+
+    @Test
+    public void tcAnd03_withOnlyL2Configured_refusesEveryDeviceAndLogsAWarning() throws Exception {
+        when(globalParams.getCachedStringGlobalParam(DeviceCertificationPolicy.CONFIG_KEY)).thenReturn("L2");
+
+        for (String level : new String[] {"L0", "L1"}) {
+            BiometricsServiceException refused = assertThrows(BiometricsServiceException.class,
+                    () -> service.handleDeviceInfoResponse(Modality.FACE, deviceInfoResponse(level)));
+            assertEquals(level, "REG-SBI-120", refused.getErrorCode());
+        }
+        assertTrue(ShadowLog.getLogs().stream()
+                .anyMatch(log -> log.type == Log.WARN && log.msg.contains("Unknown certification level 'L2'")));
+    }
+
+    @Test
+    public void tcAnd03_withoutGlobalParams_usesTheDefaultLevels() throws Exception {
+        Context context = spy(RuntimeEnvironment.getApplication());
+        doReturn("RegistrationClient").when(context).getString(anyInt());
+        service = spy(new Biometrics095Service(context, new ObjectMapper(), audit, null,
+                mock(ClientCryptoManagerService.class), mock(UserBiometricRepository.class), null));
+        doNothing().when(service).validateJWTResponse(anyString(), anyString());
+        doNothing().when(service).addBioDevice(any(), any(), any(), any(), any());
+        doReturn(base64Url("{\"serialNo\":\"SN-1\"}")).when(service).getJWTPayLoad(DIGITAL_ID_JWT);
+
+        String[] result = service.handleDeviceInfoResponse(Modality.FACE, deviceInfoResponse("L1"));
+
+        assertEquals("SN-1", result[1]);
     }
 
     /** A signed device info response whose payload reports the given certification level. */
