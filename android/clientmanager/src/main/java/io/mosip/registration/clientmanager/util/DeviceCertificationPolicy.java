@@ -1,7 +1,10 @@
 package io.mosip.registration.clientmanager.util;
 
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
-import java.util.HashSet;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 
@@ -11,13 +14,21 @@ import java.util.Set;
  */
 public final class DeviceCertificationPolicy {
 
+    /** Config key listing the accepted levels, comma-separated. */
+    public static final String CONFIG_KEY = "mosip.registration.face.liveness.device.accepted.certifications";
+
     /** Accepted levels when nothing usable is configured. */
     public static final String DEFAULT_ACCEPTED_CERTIFICATIONS = "L0,L1";
 
-    private final Set<String> accepted;
+    /** The levels SBI 0.9.5 devices report. */
+    private static final List<String> KNOWN_LEVELS = Collections.unmodifiableList(Arrays.asList("L0", "L1"));
 
-    private DeviceCertificationPolicy(Set<String> accepted) {
+    private final Set<String> accepted;
+    private final List<String> warnings;
+
+    private DeviceCertificationPolicy(Set<String> accepted, List<String> warnings) {
         this.accepted = accepted;
+        this.warnings = warnings;
     }
 
     /**
@@ -32,11 +43,18 @@ public final class DeviceCertificationPolicy {
         if (levels.isEmpty()) {
             levels = parse(DEFAULT_ACCEPTED_CERTIFICATIONS);
         }
-        return new DeviceCertificationPolicy(Collections.unmodifiableSet(levels));
+        List<String> warnings = new ArrayList<>();
+        for (String level : levels) {
+            if (!KNOWN_LEVELS.contains(level)) {
+                warnings.add("Unknown certification level '" + level + "' in " + CONFIG_KEY
+                        + "; SBI devices report only L0 or L1, so no device can match it");
+            }
+        }
+        return new DeviceCertificationPolicy(Collections.unmodifiableSet(levels), Collections.unmodifiableList(warnings));
     }
 
     private static Set<String> parse(String value) {
-        Set<String> levels = new HashSet<>();
+        Set<String> levels = new LinkedHashSet<>();
         if (value == null) {
             return levels;
         }
@@ -55,6 +73,11 @@ public final class DeviceCertificationPolicy {
      */
     public boolean accepts(String certification) {
         return certification != null && accepted.contains(normalise(certification));
+    }
+
+    /** @return one message per configured level other than L0 and L1, in config order; unmodifiable */
+    public List<String> warnings() {
+        return warnings;
     }
 
     private static String normalise(String level) {
