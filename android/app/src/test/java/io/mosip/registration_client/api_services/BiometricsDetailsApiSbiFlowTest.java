@@ -24,6 +24,7 @@ import org.robolectric.annotation.Config;
 
 import io.mosip.registration.clientmanager.dto.registration.BiometricsDto;
 import io.mosip.registration.clientmanager.dto.registration.RegistrationDto;
+import io.mosip.registration.clientmanager.dto.sbi.CaptureRequest;
 import io.mosip.registration.clientmanager.exception.BiometricsServiceException;
 import io.mosip.registration.clientmanager.repository.GlobalParamRepository;
 import io.mosip.registration.clientmanager.service.Biometrics095Service;
@@ -63,6 +64,10 @@ public class BiometricsDetailsApiSbiFlowTest {
     @Before
     public void setUp() {
         when(activity.getPackageManager()).thenReturn(mock(PackageManager.class));
+        // master stores the capture request's transactionId on the registration before starting RCAPTURE
+        CaptureRequest captureRequest = new CaptureRequest();
+        captureRequest.setTransactionId("TXN-1");
+        when(biometricsService.getRCaptureRequest(any(), any(), any())).thenReturn(captureRequest);
         api = new BiometricsDetailsApi(mock(AuditManagerService.class), new ObjectMapper(), biometricsService,
                 registrationService, mock(GlobalParamRepository.class), mock(UserOnboardService.class));
         api.setCallbackActivity(activity);
@@ -114,7 +119,7 @@ public class BiometricsDetailsApiSbiFlowTest {
     @Test
     public void tcAnd14_whenCaptureReturnsNoBiometrics_failsWithRCaptureFailed() throws Exception {
         startCaptureFlow();
-        when(biometricsService.handleRCaptureResponse(any(), any(), any(), anyBoolean()))
+        when(biometricsService.handleRCaptureResponse(any(), any(), any(), any(), anyBoolean()))
                 .thenReturn(new ArrayList<>());
 
         api.onSbiActivityResult(CAPTURE, Activity.RESULT_OK, captureResponse());
@@ -125,7 +130,7 @@ public class BiometricsDetailsApiSbiFlowTest {
     @Test
     public void tcAnd14_whenCaptureIsRejected_failsWithTheServiceErrorCode() throws Exception {
         startCaptureFlow();
-        when(biometricsService.handleRCaptureResponse(any(), any(), any(), anyBoolean()))
+        when(biometricsService.handleRCaptureResponse(any(), any(), any(), any(), anyBoolean()))
                 .thenThrow(new BiometricsServiceException("REG-SBI-106", "Device response with invalid signature"));
 
         api.onSbiActivityResult(CAPTURE, Activity.RESULT_OK, captureResponse());
@@ -136,7 +141,7 @@ public class BiometricsDetailsApiSbiFlowTest {
     @Test
     public void tcAnd14_whenCaptureParsingFailsUnexpectedly_failsWithRCaptureFailed() throws Exception {
         startCaptureFlow();
-        when(biometricsService.handleRCaptureResponse(any(), any(), any(), anyBoolean()))
+        when(biometricsService.handleRCaptureResponse(any(), any(), any(), any(), anyBoolean()))
                 .thenThrow(new IllegalStateException("unexpected"));
 
         api.onSbiActivityResult(CAPTURE, Activity.RESULT_OK, captureResponse());
@@ -147,7 +152,7 @@ public class BiometricsDetailsApiSbiFlowTest {
     @Test
     public void tcAnd05_whenCaptureSucceeds_repliesOkOnce() throws Exception {
         startCaptureFlow();
-        when(biometricsService.handleRCaptureResponse(any(), any(), any(), anyBoolean()))
+        when(biometricsService.handleRCaptureResponse(any(), any(), any(), any(), anyBoolean()))
                 .thenReturn(new ArrayList<>(Collections.singletonList(mock(BiometricsDto.class))));
 
         api.onSbiActivityResult(CAPTURE, Activity.RESULT_OK, captureResponse());
