@@ -14,6 +14,7 @@ import io.mosip.registration.liveness.api.UserPrompt;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 
 public class LivenessScreenModelTest {
 
@@ -220,5 +221,54 @@ public class LivenessScreenModelTest {
 
         assertArrayEquals(new Object[] {2, 3}, info.statusArgs());
         assertArrayEquals(new Object[] {2, 3}, step.statusArgs());
+    }
+
+    @Test
+    public void tcUx_failedOutcome_showsTheFailureWithoutButtons() {
+        for (String key : new String[] {"liveness.fail.generic", "liveness.fail.try_again"}) {
+            LivenessScreenModel model = new LivenessScreenModel();
+            model.onChallenge(new Challenge(ChallengeType.SMILE, 5000L), 1, 2);
+
+            ScreenState screen = model.onStateChanged(SessionState.FAILED, new UserPrompt(key, PromptLevel.ERROR));
+
+            assertEquals(key, key, screen.statusKey());
+            assertEquals(key, ScreenState.Tone.FAILURE, screen.tone());
+            assertTrue(key, screen.buttons().isEmpty());
+            assertEquals(key, 0, screen.stepTotal());
+        }
+    }
+
+    @Test
+    public void tcUx_s7_guidanceDuringNeutralHold_keepsTheHoldPromptAndRing() {
+        LivenessScreenModel model = new LivenessScreenModel();
+        model.onChallenge(new Challenge(ChallengeType.SMILE, 5000L), 2, 2);
+        model.onStateChanged(SessionState.NEUTRAL_HOLD, new UserPrompt("liveness.prompt.neutral", PromptLevel.INFO));
+        model.onProgress(0.5f);
+
+        ScreenState screen = model.onStateChanged(SessionState.NEUTRAL_HOLD,
+                new UserPrompt("liveness.guidance.look_at_camera", PromptLevel.GUIDANCE));
+
+        assertEquals("liveness.guidance.look_at_camera", screen.guidanceKey());
+        assertEquals("liveness.prompt.neutral", screen.promptKey());
+        assertEquals(0.5f, screen.ringProgress(), 0.0001f);
+    }
+
+    @Test
+    public void tcUx_s3_infoDuringChallenge_clearsOnlyTheGuidance() {
+        LivenessScreenModel model = new LivenessScreenModel();
+        model.onChallenge(new Challenge(ChallengeType.TURN_LEFT, 5000L), 1, 3);
+        model.onStateChanged(SessionState.ACTIVE_CHALLENGE,
+                new UserPrompt("liveness.guidance.one_face_only", PromptLevel.GUIDANCE));
+        model.onStateChanged(SessionState.ACTIVE_CHALLENGE,
+                new UserPrompt("liveness.feedback.continue", PromptLevel.INFO));
+
+        ScreenState screen = model.onProgress(0.6f);
+
+        assertNull(screen.guidanceKey());
+        assertEquals("liveness.progress.step", screen.statusKey());
+        assertEquals(1, screen.stepIndex());
+        assertEquals("liveness.prompt.turn_left", screen.promptKey());
+        assertEquals(ScreenState.Cue.LEFT, screen.cue());
+        assertEquals(0.6f, screen.ringProgress(), 0.0001f);
     }
 }

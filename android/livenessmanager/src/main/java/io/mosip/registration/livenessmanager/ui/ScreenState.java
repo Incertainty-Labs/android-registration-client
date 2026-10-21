@@ -90,7 +90,10 @@ public final class ScreenState {
         return ringProgress;
     }
 
-    /** @return message key of the short feedback toast (S6), or null */
+    /**
+     * @return message key of the short feedback toast (S6), or null. A one-shot event: the view shows it once
+     *         (about 1.5 s) and the next screen does not repeat it
+     */
     public String toastKey() {
         return toastKey;
     }
@@ -160,7 +163,7 @@ public final class ScreenState {
             return this;
         }
 
-        /** Starts from what {@code screen} shows, to change one part of it. */
+        /** Starts from what {@code screen} shows, to change one part of it; the one-shot toast is not carried over. */
         static Builder from(ScreenState screen) {
             Builder b = new Builder(screen.statusKey, screen.tone);
             b.statusArgs = screen.statusArgs;

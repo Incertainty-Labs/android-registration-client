@@ -41,7 +41,16 @@ public final class LivenessScreenModel {
      * @return the screen to show
      */
     public ScreenState onStateChanged(SessionState state, UserPrompt prompt) {
-        if (prompt.level() == PromptLevel.ERROR && CAMERA_UNAVAILABLE_KEY.equals(prompt.key())) {
+        boolean inAction = current != null
+                && (state == SessionState.ACTIVE_CHALLENGE || state == SessionState.NEUTRAL_HOLD);
+        if (state == SessionState.PASSED || state == SessionState.FAILED) {
+            // The engine has decided. LivenessActivity returns the result; Flutter shows S9 to S12 (UI_UX_SPEC §6.3)
+            current = ScreenState.builder(prompt.key(),
+                            state == SessionState.PASSED ? ScreenState.Tone.SUCCESS : ScreenState.Tone.FAILURE)
+                    .statusArgs(prompt.args())
+                    .buttons(Collections.<ScreenState.Button>emptyList())
+                    .build();
+        } else if (prompt.level() == PromptLevel.ERROR && CAMERA_UNAVAILABLE_KEY.equals(prompt.key())) {
             current = ScreenState.builder(prompt.key(), ScreenState.Tone.DEVICE_ERROR).statusArgs(prompt.args())
                     .buttons(Arrays.asList(ScreenState.Button.OPEN_SETTINGS, ScreenState.Button.RETRY,
                             ScreenState.Button.CANCEL))
@@ -51,17 +60,21 @@ public final class LivenessScreenModel {
                     .buttons(Collections.singletonList(ScreenState.Button.CLOSE))
                     .build();
         } else if (prompt.level() == PromptLevel.ERROR) {
-            // Device or frame errors (LIV-001, 002, 012): the user can fix the cause and retry
+            // ERROR state with a device or frame error (LIV-001, 002, 012): the user can fix the cause and retry
             current = ScreenState.builder(prompt.key(), ScreenState.Tone.DEVICE_ERROR).statusArgs(prompt.args())
                     .buttons(Arrays.asList(ScreenState.Button.RETRY, ScreenState.Button.CANCEL))
                     .build();
+        } else if (prompt.level() == PromptLevel.GUIDANCE && inAction) {
+            current = ScreenState.Builder.from(current).guidance(prompt.key()).build();
         } else if (prompt.level() == PromptLevel.SUCCESS && current != null) {
             current = ScreenState.Builder.from(current).toast(prompt.key()).build();
         } else if (state == SessionState.NEUTRAL_HOLD && current != null) {
             current = ScreenState.Builder.from(current)
-                    .prompt(prompt.key(), ScreenState.Cue.NONE).ring(0f).toast(null).build();
-        } else if (prompt.level() == PromptLevel.GUIDANCE && current != null && current.stepTotal() > 0) {
-            current = ScreenState.Builder.from(current).guidance(prompt.key()).build();
+                    .prompt(prompt.key(), ScreenState.Cue.NONE).ring(0f).guidance(null).build();
+        } else if (state == SessionState.ACTIVE_CHALLENGE && current != null) {
+            // The engine announces each challenge with its prompt just before onChallenge, and INFO during a
+            // challenge means the guidance is resolved: clear only the guidance, never make the prompt a status
+            current = ScreenState.Builder.from(current).guidance(null).build();
         } else if (prompt.level() == PromptLevel.GUIDANCE) {
             current = ScreenState.builder(statusKey, ScreenState.Tone.GUIDANCE).statusArgs(statusArgs)
                     .guidance(prompt.key()).build();
