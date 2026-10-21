@@ -11,6 +11,7 @@ import io.mosip.registration.liveness.api.PromptLevel;
 import io.mosip.registration.liveness.api.SessionState;
 import io.mosip.registration.liveness.api.UserPrompt;
 
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 
@@ -155,5 +156,69 @@ public class LivenessScreenModelTest {
         assertEquals("liveness.error.engine", screen.statusKey());
         assertEquals(ScreenState.Tone.FAILURE, screen.tone());
         assertEquals(Collections.singletonList(ScreenState.Button.CLOSE), screen.buttons());
+    }
+
+    @Test
+    public void tcUx_s3_guidanceBeforeAnyStatus_fallsBackToThePositionStatus() {
+        ScreenState screen = new LivenessScreenModel().onStateChanged(SessionState.WAITING_FOR_FACE,
+                new UserPrompt("liveness.guidance.face_not_found", PromptLevel.GUIDANCE));
+
+        assertEquals("liveness.status.position", screen.statusKey());
+        assertEquals("liveness.guidance.face_not_found", screen.guidanceKey());
+    }
+
+    @Test
+    public void tcUx_s3_guidanceDuringChallenge_keepsStepPromptAndRing() {
+        LivenessScreenModel model = new LivenessScreenModel();
+        model.onChallenge(new Challenge(ChallengeType.LOOK_UP, 5000L), 2, 3);
+        model.onProgress(0.4f);
+
+        ScreenState screen = model.onStateChanged(SessionState.ACTIVE_CHALLENGE,
+                new UserPrompt("liveness.guidance.one_face_only", PromptLevel.GUIDANCE));
+
+        assertEquals("liveness.guidance.one_face_only", screen.guidanceKey());
+        assertEquals("liveness.progress.step", screen.statusKey());
+        assertEquals(2, screen.stepIndex());
+        assertEquals("liveness.prompt.look_up", screen.promptKey());
+        assertEquals(ScreenState.Cue.UP, screen.cue());
+        assertEquals(0.4f, screen.ringProgress(), 0.0001f);
+    }
+
+    @Test
+    public void tcUx_s13_otherDeviceErrors_offerRetryCancelAndKeepTheStatus() {
+        for (String key : new String[] {"liveness.error.device_unavailable", "liveness.error.device_connection",
+                "liveness.error.invalid_frame"}) {
+            LivenessScreenModel model = new LivenessScreenModel();
+            model.onStateChanged(SessionState.WAITING_FOR_FACE, new UserPrompt("liveness.status.position", PromptLevel.INFO));
+
+            ScreenState error = model.onStateChanged(SessionState.ERROR, new UserPrompt(key, PromptLevel.ERROR));
+            ScreenState afterwards = model.onStateChanged(SessionState.WAITING_FOR_FACE,
+                    new UserPrompt("liveness.guidance.face_not_found", PromptLevel.GUIDANCE));
+
+            assertEquals(key, key, error.statusKey());
+            assertEquals(key, ScreenState.Tone.DEVICE_ERROR, error.tone());
+            assertEquals(key, Arrays.asList(ScreenState.Button.RETRY, ScreenState.Button.CANCEL), error.buttons());
+            assertEquals(key, "liveness.status.position", afterwards.statusKey());
+        }
+    }
+
+    @Test
+    public void tcUx_progressBeforeAnyState_showsThePositionScreenWithTheRing() {
+        ScreenState screen = new LivenessScreenModel().onProgress(0.3f);
+
+        assertEquals("liveness.status.position", screen.statusKey());
+        assertEquals(0.3f, screen.ringProgress(), 0.0001f);
+    }
+
+    @Test
+    public void tcUx_promptArguments_reachTheStatusLine() {
+        LivenessScreenModel model = new LivenessScreenModel();
+
+        ScreenState info = model.onStateChanged(SessionState.WAITING_FOR_FACE,
+                new UserPrompt("liveness.retry.available", PromptLevel.INFO, 2, 3));
+        ScreenState step = model.onChallenge(new Challenge(ChallengeType.SMILE, 5000L), 2, 3);
+
+        assertArrayEquals(new Object[] {2, 3}, info.statusArgs());
+        assertArrayEquals(new Object[] {2, 3}, step.statusArgs());
     }
 }

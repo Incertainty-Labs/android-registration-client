@@ -20,6 +20,7 @@ public final class ScreenState {
     public enum Button { CANCEL, RETRY, OPEN_SETTINGS, CLOSE }
 
     private final String statusKey;
+    private final Object[] statusArgs;
     private final Tone tone;
     private final String promptKey;
     private final String guidanceKey;
@@ -32,6 +33,7 @@ public final class ScreenState {
 
     private ScreenState(Builder b) {
         this.statusKey = b.statusKey;
+        this.statusArgs = b.statusArgs.clone();
         this.tone = b.tone;
         this.promptKey = b.promptKey;
         this.guidanceKey = b.guidanceKey;
@@ -46,6 +48,11 @@ public final class ScreenState {
     /** @return message key of the status line, or null */
     public String statusKey() {
         return statusKey;
+    }
+
+    /** @return arguments for the status message, e.g. {@code Step {0} of {1}}; a copy, never null */
+    public Object[] statusArgs() {
+        return statusArgs.clone();
     }
 
     /** @return colour and icon group of the status line */
@@ -101,6 +108,7 @@ public final class ScreenState {
     static final class Builder {
         private final String statusKey;
         private final Tone tone;
+        private Object[] statusArgs = new Object[0];
         private String promptKey;
         private String guidanceKey;
         private Cue cue = Cue.NONE;
@@ -113,6 +121,11 @@ public final class ScreenState {
         private Builder(String statusKey, Tone tone) {
             this.statusKey = statusKey;
             this.tone = tone;
+        }
+
+        Builder statusArgs(Object... args) {
+            this.statusArgs = args == null ? new Object[0] : args;
+            return this;
         }
 
         Builder prompt(String key, Cue cue) {
@@ -150,6 +163,7 @@ public final class ScreenState {
         /** Starts from what {@code screen} shows, to change one part of it. */
         static Builder from(ScreenState screen) {
             Builder b = new Builder(screen.statusKey, screen.tone);
+            b.statusArgs = screen.statusArgs;
             b.promptKey = screen.promptKey;
             b.guidanceKey = screen.guidanceKey;
             b.cue = screen.cue;
