@@ -57,8 +57,10 @@ def localPropsFile = rootProject.file('local.properties')
 if (localPropsFile.exists()) {
     localPropsFile.withInputStream { localProps.load(it) }
 }
-def serverUrl = findProperty('mosip.serverBaseURL') ?:
-        localProps.getProperty('mosip.serverBaseURL') ?:
+// Values are trimmed; a blank value counts as unset (a stray space would otherwise end up inside BASE_URL)
+def nonBlank = { value -> value == null ? null : (value.toString().trim() ?: null) }
+def serverUrl = nonBlank(findProperty('mosip.serverBaseURL')) ?:
+        nonBlank(localProps.getProperty('mosip.serverBaseURL')) ?:
         'https://api-internal.sandbox.xyz.net'
 
 ext {
