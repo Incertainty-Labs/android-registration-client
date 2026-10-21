@@ -242,6 +242,7 @@ dependencies {
 
     implementation project(':packetmanager')
     implementation project(':keymanager')
+    implementation project(':livenessmanager')
 
     implementation "com.github.kenglxn.QRGen:android:${rootProject.ext.qrGenVersion}"
     implementation("io.mosip.kernel:kernel-biometrics-api:${rootProject.ext.kernelBiometricsApiVersion}") {
