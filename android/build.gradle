@@ -123,6 +123,8 @@ ext {
     jwtDecodeVersion           = "2.0.1"
     icu4jVersion               = "74.1"
     biometricsUtilVersion      = "1.3.0"
+    livenessVersion            = "v0.1.2"   // mosip-face-liveness (JitPack tag)
+    onnxruntimeAndroidVersion  = "1.28.0"
     kernelBiometricsApiVersion = "1.3.0"
     qrGenVersion               = "3.0.1"
 

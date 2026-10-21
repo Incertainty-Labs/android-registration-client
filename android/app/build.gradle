@@ -235,6 +235,7 @@ dependencies {
     implementation project(':keymanager')
     implementation project(':packetmanager')
     implementation project(':transliterationmanager')
+    implementation project(':livenessmanager')
 
     androidTestImplementation "androidx.test.ext:junit:${rootProject.ext.androidxJunitVersion}"
     androidTestImplementation "androidx.test.espresso:espresso-core:${rootProject.ext.espressoVersion}"
