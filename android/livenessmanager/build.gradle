@@ -44,7 +44,15 @@ dependencies {
     api "com.github.Incertainty-Labs.mosip-face-liveness:face-verification:${rootProject.ext.livenessVersion}"
     // liveness-core compiles against ONNX Runtime but does not ship it; Android supplies the runtime
     implementation "com.microsoft.onnxruntime:onnxruntime-android:${rootProject.ext.onnxruntimeAndroidVersion}"
+    // Front camera preview and analysis frames for LivenessActivity (B-04)
+    implementation "androidx.camera:camera-core:${rootProject.ext.cameraxVersion}"
+    implementation "androidx.camera:camera-camera2:${rootProject.ext.cameraxVersion}"
+    implementation "androidx.camera:camera-lifecycle:${rootProject.ext.cameraxVersion}"
+    implementation "androidx.camera:camera-view:${rootProject.ext.cameraxVersion}"
     testImplementation "junit:junit:${rootProject.ext.junitVersion}"
+    testImplementation "org.robolectric:robolectric:${rootProject.ext.robolectricVersion}"
+    testImplementation "org.mockito:mockito-core:${rootProject.ext.mockitoCoreVersion}"
+    testImplementation "androidx.test:core:${rootProject.ext.androidxTestCoreVersion}"
     androidTestImplementation "androidx.test.ext:junit:${rootProject.ext.androidxJunitVersion}"
     androidTestImplementation "androidx.test:runner:${rootProject.ext.androidxTestRunnerVersion}"
 }
