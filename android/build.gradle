@@ -144,6 +144,7 @@ ext {
     robolectricVersion         = "4.13"
     androidxTestCoreVersion    = "1.5.0"
     androidxJunitVersion       = "1.2.1"
+    androidxTestRunnerVersion  = "1.6.2"
     espressoVersion            = "3.6.1"
     byteBuddyVersion           = "1.14.0"
     objenesisVersion           = "3.3"
