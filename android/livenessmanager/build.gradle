@@ -36,6 +36,12 @@ android {
         targetCompatibility JavaVersion.VERSION_21
     }
     buildToolsVersion buildToolsVersion
+    testOptions {
+        unitTests {
+            // Robolectric tests read this module's strings and layouts
+            includeAndroidResources = true
+        }
+    }
 }
 
 dependencies {

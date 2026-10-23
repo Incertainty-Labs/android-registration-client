@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Liveness screen text, keyed by the API.md §7 message keys with dots as underscores. {0} and {1} are
+     MessageFormat arguments, filled by MessageKeys.text. -->
+<resources>
+    <string name="liveness_status_checking" formatted="false">Checking face liveness…</string>
+    <string name="liveness_status_position" formatted="false">Position your face inside the oval</string>
+    <string name="liveness_prompt_turn_left" formatted="false">Please turn your head to the left</string>
+    <string name="liveness_prompt_turn_right" formatted="false">Please turn your head to the right</string>
+    <string name="liveness_prompt_look_up" formatted="false">Please look up</string>
+    <string name="liveness_prompt_look_down" formatted="false">Please look down</string>
+    <string name="liveness_prompt_smile" formatted="false">Please smile</string>
+    <string name="liveness_prompt_open_mouth" formatted="false">Please open your mouth</string>
+    <string name="liveness_prompt_close_eyes" formatted="false">Please close your eyes for a moment</string>
+    <string name="liveness_prompt_blink" formatted="false">Please blink</string>
+    <string name="liveness_prompt_neutral" formatted="false">Look straight at the camera and hold still</string>
+    <string name="liveness_feedback_continue" formatted="false">Please continue</string>
+    <string name="liveness_feedback_detected" formatted="false">Action detected</string>
+    <string name="liveness_feedback_hold_still" formatted="false">Hold still</string>
+    <string name="liveness_feedback_success" formatted="false">Good, face captured successfully</string>
+    <string name="liveness_progress_step" formatted="false">Step {0} of {1}</string>
+    <string name="liveness_guidance_face_not_found" formatted="false">Keep your face within the capture area</string>
+    <string name="liveness_guidance_one_face_only" formatted="false">Only one person should be in front of the camera</string>
+    <string name="liveness_guidance_improve_lighting" formatted="false">Improve lighting and make sure your face is clearly visible</string>
+    <string name="liveness_guidance_look_at_camera" formatted="false">Look directly at the camera</string>
+    <string name="liveness_guidance_follow_prompt" formatted="false">Follow the prompted action</string>
+    <string name="liveness_fail_try_again" formatted="false">We could not verify face liveness. Please try again.</string>
+    <string name="liveness_fail_timeout" formatted="false">Time ran out. Please follow the prompted action and try again.</string>
+    <string name="liveness_fail_generic" formatted="false">Face verification could not be completed. Please try again.</string>
+    <string name="liveness_fail_max_retries" formatted="false">Face verification could not be completed. Please contact your supervisor.</string>
+    <string name="liveness_retry_available" formatted="false">Attempt {0} of {1}. Select Retry to try again.</string>
+    <string name="liveness_retry_button" formatted="false">Retry</string>
+    <string name="liveness_offline_chip" formatted="false">Offline</string>
+    <string name="liveness_error_device_unavailable" formatted="false">Face capture device not found. Check the connection.</string>
+    <string name="liveness_error_device_connection" formatted="false">Lost connection to the face capture device.</string>
+    <string name="liveness_error_camera_unavailable" formatted="false">Camera is not available.</string>
+    <string name="liveness_error_invalid_frame" formatted="false">The camera sent unreadable images. Please try again.</string>
+    <string name="liveness_error_engine" formatted="false">Face verification is unavailable. Please contact support.</string>
+    <string name="liveness_status_device_search" formatted="false">Looking for the face camera…</string>
+    <string name="liveness_status_no_action" formatted="false">Look at the camera. No action needed.</string>
+    <string name="liveness_badge_verified" formatted="false">Liveness: verified</string>
+    <string name="liveness_badge_not_verified" formatted="false">Liveness: not verified</string>
+    <string name="liveness_button_use_face" formatted="false">Use face</string>
+    <string name="liveness_button_rescan" formatted="false">Rescan devices</string>
+    <string name="liveness_button_open_settings" formatted="false">Open settings</string>
+    <string name="liveness_button_request_override" formatted="false">Request supervisor override</string>
+    <string name="liveness_button_mark_exception" formatted="false">Mark face exception</string>
+    <string name="liveness_button_close" formatted="false">Close</string>
+    <string name="liveness_title_operator_auth" formatted="false">Operator authentication</string>
+    <string name="liveness_title_supervisor_exception" formatted="false">Supervisor authentication required: biometric exceptions</string>
+    <string name="liveness_title_supervisor_eod" formatted="false">Supervisor authentication: approve packets</string>
+    <string name="liveness_permission_title" formatted="false">Camera access needed</string>
+    <string name="liveness_permission_body" formatted="false">The camera is used only to check that a real person is present. No video is saved.</string>
+    <string name="liveness_offline_announce" formatted="false">Working offline</string>
+    <string name="liveness_permission_allow" formatted="false">Allow</string>
+    <string name="liveness_permission_not_now" formatted="false">Not now</string>
+    <string name="liveness_button_cancel" formatted="false">Cancel</string>
+</resources>
