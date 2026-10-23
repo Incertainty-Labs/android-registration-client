@@ -66,6 +66,7 @@ import io.mosip.registration_client.api_services.DocumentDetailsApi;
 
 import io.mosip.registration_client.api_services.DynamicDetailsApi;
 import io.mosip.registration_client.api_services.GlobalConfigSettingsApi;
+import io.mosip.registration_client.api_services.LivenessApiImpl;
 import io.mosip.registration_client.api_services.MachineDetailsApi;
 import io.mosip.registration_client.api_services.PacketAuthenticationApi;
 import io.mosip.registration_client.api_services.MasterDataSyncApi;
@@ -267,6 +268,12 @@ public class HostApiModule {
     @Singleton
     LocalConfigService provideLocalConfigService(LocalConfigDAO localConfigDAO) {
         return new LocalConfigServiceImpl(localConfigDAO);
+    }
+
+    @Provides
+    @Singleton
+    LivenessApiImpl getLivenessApiImpl(GlobalParamRepository globalParamRepository) {
+        return new LivenessApiImpl(globalParamRepository, BuildConfig.LIVENESS_OVERRIDES);
     }
 
     @Provides
