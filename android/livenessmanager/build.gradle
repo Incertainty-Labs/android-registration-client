@@ -55,6 +55,8 @@ dependencies {
     implementation "androidx.camera:camera-camera2:${rootProject.ext.cameraxVersion}"
     implementation "androidx.camera:camera-lifecycle:${rootProject.ext.cameraxVersion}"
     implementation "androidx.camera:camera-view:${rootProject.ext.cameraxVersion}"
+    // ComponentActivity: a lifecycle owner for CameraX and the camera permission request
+    implementation "androidx.activity:activity:${rootProject.ext.activityVersion}"
     testImplementation "junit:junit:${rootProject.ext.junitVersion}"
     testImplementation "org.robolectric:robolectric:${rootProject.ext.robolectricVersion}"
     testImplementation "org.mockito:mockito-core:${rootProject.ext.mockitoCoreVersion}"
