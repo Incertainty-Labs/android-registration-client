@@ -6,7 +6,9 @@ import android.app.AlertDialog;
 import android.app.Application;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.os.Looper;
+import android.provider.Settings;
 import android.view.View;
 import android.widget.TextView;
 
@@ -32,7 +34,9 @@ import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 
+import io.mosip.registration.liveness.api.SessionState;
 import io.mosip.registration.livenessmanager.camera.CameraXFrameSource;
 import io.mosip.registration.livenessmanager.result.LivenessResultSummary;
 import io.mosip.registration.livenessmanager.session.LivenessSessionStore;
@@ -200,6 +204,96 @@ public class LivenessActivityTest {
     }
 
     @Test
+    public void tcAnd_backDuringTheFinalScreen_keepsThePass() {
+        LivenessActivity activity = launch("PASS_PASSIVE").get();
+        runUntilResult();
+
+        activity.getOnBackPressedDispatcher().onBackPressed();
+
+        assertEquals("PASSED", result(activity).finalState());
+        assertEquals(SessionState.PASSED, LivenessSessionStore.shared().lastResult(WORKFLOW, FACE).finalState());
+    }
+
+    @Test
+    public void tcAnd_backDuringTheFinalScreen_keepsTheFailureAndCountsItOnce() {
+        LivenessActivity activity = launch("FAIL_CHALLENGE").get();
+        runUntilResult();
+
+        activity.getOnBackPressedDispatcher().onBackPressed();
+
+        assertEquals("FAILED", result(activity).finalState());
+        assertEquals(2, LivenessSessionStore.shared().begin(WORKFLOW, FACE, null, 0));
+    }
+
+    @Test
+    public void tcAnd15_noFrameInTime_showsCameraUnavailable() {
+        LivenessActivity activity = launch("PASS_PASSIVE").get();
+
+        Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(LivenessActivity.FIRST_FRAME_TIMEOUT_MS));
+
+        assertEquals("Camera is not available.", text(activity, R.id.liveness_status));
+        assertEquals(View.VISIBLE, activity.findViewById(R.id.liveness_retry).getVisibility());
+    }
+
+    @Test
+    public void tcAnd15_framesInTime_keepTheSessionRunning() {
+        LivenessActivity activity = launch("PASS_ACTIVE").get();
+        frames(1);
+
+        Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(LivenessActivity.FIRST_FRAME_TIMEOUT_MS));
+
+        assertFalse("Camera is not available.".equals(text(activity, R.id.liveness_status)));
+    }
+
+    @Test
+    public void tcAnd15_laterBindFailure_showsCameraUnavailable() {
+        LivenessActivity activity = launch("PASS_PASSIVE").get();
+
+        binder.onFailure.accept(new IllegalStateException("Camera in use"));
+        Shadows.shadowOf(Looper.getMainLooper()).idle();
+
+        assertEquals("Camera is not available.", text(activity, R.id.liveness_status));
+    }
+
+    @Test
+    public void tcAnd15_allowThenGranted_startsTheSession() {
+        Shadows.shadowOf(app).denyPermissions(Manifest.permission.CAMERA);
+        LivenessActivity activity = launch("PASS_PASSIVE").get();
+
+        click(ShadowAlertDialog.getLatestAlertDialog(), DialogInterface.BUTTON_POSITIVE);
+        grantRequestedCamera(activity);
+
+        assertNotNull("camera not bound", binder.analyzer);
+    }
+
+    @Test
+    public void tcAnd15_returningFromSettingsWithThePermission_startsTheSession() {
+        Shadows.shadowOf(app).denyPermissions(Manifest.permission.CAMERA);
+        ActivityController<LivenessActivity> controller = launch("PASS_PASSIVE");
+        LivenessActivity activity = controller.get();
+        click(ShadowAlertDialog.getLatestAlertDialog(), DialogInterface.BUTTON_NEGATIVE);
+
+        activity.findViewById(R.id.liveness_open_settings).performClick();
+        assertEquals(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                Shadows.shadowOf(activity).getNextStartedActivity().getAction());
+        Shadows.shadowOf(app).grantPermissions(Manifest.permission.CAMERA);
+        controller.pause().resume();
+
+        assertNotNull("camera not bound", binder.analyzer);
+    }
+
+    @Test
+    public void tcAnd_destroy_dismissesTheRationale() {
+        Shadows.shadowOf(app).denyPermissions(Manifest.permission.CAMERA);
+        ActivityController<LivenessActivity> controller = launch("PASS_PASSIVE");
+        AlertDialog dialog = ShadowAlertDialog.getLatestAlertDialog();
+
+        controller.pause().stop().destroy();
+
+        assertFalse(dialog.isShowing());
+    }
+
+    @Test
     public void tcAnd_requestWithoutWorkflow_finishesWithoutAResult() {
         Intent intent = new Intent(app, LivenessActivity.class);
 
@@ -239,6 +333,7 @@ public class LivenessActivityTest {
         ImageProxy.PlaneProxy plane = mock(ImageProxy.PlaneProxy.class);
         when(plane.getBuffer()).thenReturn(ByteBuffer.wrap(rgba));
         when(plane.getRowStride()).thenReturn(8);
+        when(plane.getPixelStride()).thenReturn(4);
         ImageInfo info = mock(ImageInfo.class);
         when(info.getTimestamp()).thenReturn(TimeUnit.MILLISECONDS.toNanos(nextFrameMs));
         nextFrameMs += FRAME_INTERVAL_MS;
@@ -248,6 +343,16 @@ public class LivenessActivityTest {
         when(image.getPlanes()).thenReturn(new ImageProxy.PlaneProxy[]{plane});
         when(image.getImageInfo()).thenReturn(info);
         return image;
+    }
+
+    /** Answers the system permission dialog that the activity opened with "Allow". */
+    private void grantRequestedCamera(Activity activity) {
+        ShadowActivity.PermissionsRequest request = Shadows.shadowOf(activity).getLastRequestedPermission();
+        assertNotNull("no permission requested", request);
+        Shadows.shadowOf(app).grantPermissions(Manifest.permission.CAMERA);
+        activity.onRequestPermissionsResult(request.requestCode, request.requestedPermissions,
+                new int[]{PackageManager.PERMISSION_GRANTED});
+        Shadows.shadowOf(Looper.getMainLooper()).idle();
     }
 
     private static LivenessResultSummary result(Activity activity) {
@@ -268,14 +373,16 @@ public class LivenessActivityTest {
 
     private static final class FakeBinder implements CameraXFrameSource.CameraBinder {
         private ImageAnalysis.Analyzer analyzer;
+        private Consumer<Exception> onFailure;
         private RuntimeException failure;
 
         @Override
-        public void bind(ImageAnalysis.Analyzer value) {
+        public void bind(ImageAnalysis.Analyzer value, Consumer<Exception> failed) {
             if (failure != null) {
                 throw failure;
             }
             analyzer = value;
+            onFailure = failed;
         }
 
         @Override

@@ -23,6 +23,7 @@ import androidx.annotation.VisibleForTesting;
 import androidx.camera.view.PreviewView;
 
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import io.mosip.registration.liveness.api.Challenge;
 import io.mosip.registration.liveness.api.Decision;
@@ -60,6 +61,12 @@ public class LivenessActivity extends ComponentActivity {
     /** How long the passed or failed screen stays before the activity returns (Flutter shows S9 to S12). */
     static final long FINAL_SCREEN_MS = 800L;
 
+    /**
+     * How long the camera may take to send its first frame before the screen shows LIV-003: a camera in use or
+     * blocked by policy binds without error but sends nothing (like the 2 s rule for SBI streams).
+     */
+    static final long FIRST_FRAME_TIMEOUT_MS = 3000L;
+
     /** How long the S6 feedback toast stays. */
     private static final long TOAST_MS = 1500L;
 
@@ -94,6 +101,10 @@ public class LivenessActivity extends ComponentActivity {
     private CameraXFrameSource source;
     /** An engine ERROR result waiting for the user's Retry, Cancel or Close. */
     private LivenessResult pendingError;
+    /** The recorded pass or fail, shown on the final screen; back returns it rather than a cancel. */
+    private LivenessResultSummary recorded;
+    private Runnable firstFrameCheck;
+    private AlertDialog rationale;
     private boolean awaitingSettings;
     private boolean finished;
 
@@ -183,6 +194,9 @@ public class LivenessActivity extends ComponentActivity {
 
     @Override
     protected void onDestroy() {
+        if (rationale != null) {
+            rationale.dismiss();
+        }
         stopSession();
         handler.removeCallbacksAndMessages(null);
         super.onDestroy();
@@ -190,7 +204,7 @@ public class LivenessActivity extends ComponentActivity {
 
     /** The §6.6 rationale before the system permission dialog. */
     private void askForCamera() {
-        new AlertDialog.Builder(this)
+        rationale = new AlertDialog.Builder(this)
                 .setTitle(text("liveness.permission.title"))
                 .setMessage(text("liveness.permission.body"))
                 .setNegativeButton(text("liveness.permission.not_now"),
@@ -219,10 +233,18 @@ public class LivenessActivity extends ComponentActivity {
         callback = sessionCallback;
         session = started;
         source = frameSource;
+        AtomicBoolean framesSeen = new AtomicBoolean();
+        firstFrameCheck = () -> {
+            if (callback == sessionCallback && !framesSeen.get()) {
+                showDeviceError(LivenessErrorCode.CAMERA_UNAVAILABLE);
+            }
+        };
+        handler.postDelayed(firstFrameCheck, FIRST_FRAME_TIMEOUT_MS);
         try {
             frameSource.start(new FrameListener() {
                 @Override
                 public void onFrame(FaceFrame frame) {
+                    framesSeen.set(true);
                     started.onFrame(frame);
                 }
 
@@ -246,6 +268,10 @@ public class LivenessActivity extends ComponentActivity {
 
     /** Stops the camera and the session; the session's own CANCELLED result is ignored. */
     private void stopSession() {
+        if (firstFrameCheck != null) {
+            handler.removeCallbacks(firstFrameCheck);
+            firstFrameCheck = null;
+        }
         if (callback != null) {
             callback.active = false;
             callback = null;
@@ -281,9 +307,13 @@ public class LivenessActivity extends ComponentActivity {
                 Uri.fromParts("package", getPackageName(), null)));
     }
 
-    /** The user's ✕, back or Cancel. */
+    /** The user's ✕, back or Cancel; once a pass or fail is recorded, that result is returned instead. */
     private void cancel() {
-        finishWith(LivenessResult.builder(SessionState.CANCELLED, Decision.INCONCLUSIVE).build());
+        if (recorded != null) {
+            finishWith(recorded);
+        } else {
+            finishWith(LivenessResult.builder(SessionState.CANCELLED, Decision.INCONCLUSIVE).build());
+        }
     }
 
     private void onResult(LivenessResult result) {
@@ -297,8 +327,8 @@ public class LivenessActivity extends ComponentActivity {
             case PASSED:
             case FAILED:
                 // Record now, so the attempt counts even if the activity dies during the final screen
-                LivenessResultSummary summary = complete(result);
-                handler.postDelayed(() -> finishWith(summary), FINAL_SCREEN_MS);
+                recorded = complete(result);
+                handler.postDelayed(() -> finishWith(recorded), FINAL_SCREEN_MS);
                 break;
             case ERROR:
                 pendingError = result;

@@ -20,6 +20,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 
 import io.mosip.registration.liveness.api.FaceFrame;
 import io.mosip.registration.liveness.api.FrameListener;
@@ -207,6 +208,52 @@ public class CameraXFrameSourceTest {
         assertSame(source, binder.analyzer);
     }
 
+    @Test
+    public void tcAnd_capabilities_reportANominalFpsBeforeAnyFrame() {
+        assertEquals(30.0, source.capabilities().nominalFps(), 0.0);
+    }
+
+    @Test
+    public void tcAnd15_bindFailure_releasesWhatWasBound() {
+        binder.failure = new IllegalStateException("No front camera");
+        startExpectingError();
+
+        source.stop();
+
+        assertEquals(1, binder.unbinds);
+    }
+
+    @Test
+    public void tcAnd15_laterBindFailure_reportsLiv003() throws Exception {
+        source.start(listener);
+
+        binder.onFailure.accept(new IllegalStateException("Camera in use"));
+
+        assertEquals(Collections.singletonList(LivenessErrorCode.CAMERA_UNAVAILABLE), listener.errors);
+    }
+
+    @Test
+    public void tcAnd15_laterBindFailureAfterStop_isIgnored() throws Exception {
+        source.start(listener);
+        source.stop();
+
+        binder.onFailure.accept(new IllegalStateException("Camera in use"));
+
+        assertTrue(listener.errors.isEmpty());
+    }
+
+    @Test
+    public void tcAnd_imageWithAnotherPixelStride_isUnreadable() throws Exception {
+        source.start(listener);
+        ImageProxy image = goodImage(0L);
+        when(image.getPlanes()[0].getPixelStride()).thenReturn(3);
+
+        binder.analyzer.analyze(image);
+
+        assertTrue(listener.frames.isEmpty());
+        verify(image).close();
+    }
+
     private LivenessException startExpectingError() {
         try {
             source.start(listener);
@@ -246,15 +293,17 @@ public class CameraXFrameSourceTest {
 
     private static final class FakeBinder implements CameraXFrameSource.CameraBinder {
         private ImageAnalysis.Analyzer analyzer;
+        private Consumer<Exception> onFailure;
         private RuntimeException failure;
         private int unbinds;
 
         @Override
-        public void bind(ImageAnalysis.Analyzer value) {
+        public void bind(ImageAnalysis.Analyzer value, Consumer<Exception> failed) {
             if (failure != null) {
                 throw failure;
             }
             analyzer = value;
+            onFailure = failed;
         }
 
         @Override

@@ -12,6 +12,7 @@ import androidx.camera.core.ImageProxy;
 import java.util.ArrayDeque;
 import java.util.Collections;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 
 import io.mosip.registration.liveness.api.FaceFrame;
 import io.mosip.registration.liveness.api.FrameListener;
@@ -31,20 +32,30 @@ public final class CameraXFrameSource implements FrameSource, ImageAnalysis.Anal
     public interface CameraBinder {
 
         /**
-         * Binds the front camera's image analysis, with {@code analyzer} receiving every image.
+         * Binds the front camera's image analysis, with {@code analyzer} receiving every image. Binding may finish
+         * later, off this call, so as not to block the main thread.
          *
-         * @param analyzer receives the analysis images
+         * @param analyzer  receives the analysis images
+         * @param onFailure told if binding fails after this call returned
          * @throws Exception if the camera cannot be bound
          */
-        void bind(ImageAnalysis.Analyzer analyzer) throws Exception;
+        void bind(ImageAnalysis.Analyzer analyzer, Consumer<Exception> onFailure) throws Exception;
 
-        /** Unbinds what {@link #bind} bound. */
+        /** Releases what {@link #bind} bound, also after a failed bind. Safe to call twice. */
         void unbind();
     }
 
     static final String ID = "camerax:front";
     static final String CERTIFICATION = "L0-camera";
     private static final String FORMAT = "RGBA_8888";
+
+    /**
+     * The frame rate CameraX delivers analysis images at on phones and tablets; reported as nominal so a session
+     * can plan before the first frames are measured.
+     */
+    static final double NOMINAL_FPS = 30.0;
+
+    private static final int RGBA_PIXEL_STRIDE = 4;
 
     /** The measured frame rate covers this much of the most recent frames (SourceCapabilities). */
     private static final long FPS_WINDOW_MS = 2000L;
@@ -82,7 +93,7 @@ public final class CameraXFrameSource implements FrameSource, ImageAnalysis.Anal
                 .device(Build.MANUFACTURER, Build.MODEL)
                 .certification(CERTIFICATION)
                 .resolution(width, height)
-                .fps(0, measuredFps())
+                .fps(NOMINAL_FPS, measuredFps())
                 .devicePad(false)
                 .formats(Collections.singleton(FORMAT))
                 .build();
@@ -98,9 +109,10 @@ public final class CameraXFrameSource implements FrameSource, ImageAnalysis.Anal
         }
         listener = frameListener;
         try {
-            binder.bind(this);
+            binder.bind(this, this::bindFailed);
         } catch (Exception e) {
             listener = null;
+            binder.unbind();
             throw new LivenessException(LivenessErrorCode.CAMERA_UNAVAILABLE, "Camera bind failed: " + e.getMessage());
         }
         bound = true;
@@ -115,6 +127,13 @@ public final class CameraXFrameSource implements FrameSource, ImageAnalysis.Anal
         }
     }
 
+    private void bindFailed(Exception e) {
+        FrameListener target = listener;
+        if (target != null) {
+            target.onError(LivenessErrorCode.CAMERA_UNAVAILABLE, "Camera bind failed: " + e.getMessage());
+        }
+    }
+
     @Override
     public void analyze(@NonNull ImageProxy image) {
         try {
@@ -125,6 +144,9 @@ public final class CameraXFrameSource implements FrameSource, ImageAnalysis.Anal
             ImageProxy.PlaneProxy plane = image.getPlanes()[0];
             FaceFrame frame;
             try {
+                if (plane.getPixelStride() != RGBA_PIXEL_STRIDE) {
+                    throw new IllegalArgumentException("Not packed RGBA: pixel stride " + plane.getPixelStride());
+                }
                 frame = converter.convert(plane.getBuffer(), image.getWidth(), image.getHeight(),
                         plane.getRowStride(), image.getImageInfo().getRotationDegrees(),
                         TimeUnit.NANOSECONDS.toMillis(image.getImageInfo().getTimestamp()));
