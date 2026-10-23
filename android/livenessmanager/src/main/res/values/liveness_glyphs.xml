@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Icons drawn as text: the cancel cross and the direction cues beside the prompt (UI_UX_SPEC §3.1). The
+     preview is mirrored, so the left arrow points to the user's own left. -->
+<resources>
+    <string name="liveness_dismiss_glyph" translatable="false">✕</string>
+    <string name="liveness_cue_left" translatable="false">←</string>
+    <string name="liveness_cue_right" translatable="false">→</string>
+    <string name="liveness_cue_up" translatable="false">↑</string>
+    <string name="liveness_cue_down" translatable="false">↓</string>
+    <string name="liveness_cue_smile" translatable="false">☺</string>
+    <string name="liveness_cue_mouth" translatable="false">○</string>
+    <string name="liveness_cue_eyes" translatable="false">◉</string>
+</resources>

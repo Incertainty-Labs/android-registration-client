@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Full-screen camera screen; the solid prompt panel gives the text its contrast (UI_UX_SPEC §6.2) -->
+    <style name="Liveness.Theme" parent="@android:style/Theme.DeviceDefault.NoActionBar">
+        <item name="android:windowBackground">@android:color/black</item>
+    </style>
+
+    <!-- Status line colours by ScreenState.Tone (UI_UX_SPEC §3.2) -->
+    <color name="liveness_info">#FFFFFFFF</color>
+    <color name="liveness_instruction">#FFFFFFFF</color>
+    <color name="liveness_guidance">#FFFFB300</color>
+    <color name="liveness_success">#FF43A047</color>
+    <color name="liveness_failure">#FFE53935</color>
+    <color name="liveness_device_error">#FFFB8C00</color>
+    <color name="liveness_panel">#FF1E1E1E</color>
+    <color name="liveness_scrim">#99000000</color>
+</resources>

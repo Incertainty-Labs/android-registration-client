@@ -1,4 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- Front camera for the liveness check; no video is saved (UI_UX_SPEC §6.6) -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature
+        android:name="android.hardware.camera.front"
+        android:required="false" />
+
+    <application>
+        <activity
+            android:name=".LivenessActivity"
+            android:exported="false"
+            android:screenOrientation="sensorPortrait"
+            android:theme="@style/Liveness.Theme" />
+    </application>
 </manifest>
