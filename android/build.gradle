@@ -66,6 +66,10 @@ def serverUrl = nonBlank(findProperty('mosip.serverBaseURL')) ?:
 // local.properties: a demo build turns liveness on while the server config leaves it off. Unset means none.
 def livenessOverrideValue = nonBlank(findProperty('mosip.liveness.overrides')) ?:
         nonBlank(localProps.getProperty('mosip.liveness.overrides')) ?: ''
+// BuildConfig.LIVENESS_TEST_SCREEN: mosip.liveness.testScreen=true gives a release (demo) build the B-21 liveness
+// test screen, which debug builds always have
+def livenessTestScreen = (nonBlank(findProperty('mosip.liveness.testScreen')) ?:
+        nonBlank(localProps.getProperty('mosip.liveness.testScreen')) ?: 'false').toBoolean()
 
 ext {
     compileSdkVersion = 34
@@ -80,6 +84,7 @@ ext {
 
     serverBaseURL = "\"${serverUrl}\""
     livenessOverrides = "\"${livenessOverrideValue}\""
+    livenessTestScreenEnabled = "${livenessTestScreen}"
     serverHealthCheckPath = "\"/v1/syncdata/actuator/health\""
     serverActuatorInfoPath = "\"/v1/syncdata/actuator/info\""
     debugPassword = "\"your-debug-password\""

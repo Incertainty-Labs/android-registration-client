@@ -38,6 +38,7 @@ public class LivenessApiImpl implements LivenessPigeon.LivenessApi {
     static final String LIVENESS_BAD_REQUEST = "LIVENESS_BAD_REQUEST";
     static final String LIVENESS_START_FAILED = "LIVENESS_START_FAILED";
     static final String NOT_IMPLEMENTED = "NOT_IMPLEMENTED";
+    static final String TEST_OVERRIDES_NOT_ALLOWED = "TEST_OVERRIDES_NOT_ALLOWED";
 
     private static final String TAG = LivenessApiImpl.class.getSimpleName();
     private static final String SYNCED_PATTERN = LivenessConfigLoader.PREFIX + "%";
@@ -46,6 +47,9 @@ public class LivenessApiImpl implements LivenessPigeon.LivenessApi {
     private final GlobalParamRepository globalParamRepository;
     private final LocalConfigService localConfigService;
     private final String overrides;
+    private final boolean testScreen;
+    /** Overrides set from the B-21 test screen, applied on top of the build's; "" for none. */
+    private String testOverrides = "";
     private final LivenessSessionStore store = LivenessSessionStore.shared();
     private Activity activity;
 
@@ -58,12 +62,15 @@ public class LivenessApiImpl implements LivenessPigeon.LivenessApi {
      *                              synced config
      * @param overrides             the build's liveness overrides ({@code BuildConfig.LIVENESS_OVERRIDES}), which
      *                              win over both; null for none
+     * @param testScreen            whether this build has the B-21 liveness test screen, which may set
+     *                              {@link #setTestOverrides} (debug builds, or {@code mosip.liveness.testScreen})
      */
     public LivenessApiImpl(GlobalParamRepository globalParamRepository, LocalConfigService localConfigService,
-                           String overrides) {
+                           String overrides, boolean testScreen) {
         this.globalParamRepository = globalParamRepository;
         this.localConfigService = localConfigService;
         this.overrides = overrides;
+        this.testScreen = testScreen;
         if (overrides != null && !overrides.trim().isEmpty()) {
             Log.w(TAG, "Liveness config overrides are set in this build: " + overrides);
         }
@@ -154,6 +161,7 @@ public class LivenessApiImpl implements LivenessPigeon.LivenessApi {
             hints.put("maxAttempts", String.valueOf(new AttemptTracker(policy, clientRetryLimit(config)).limit()));
             hints.put("onMaxRetries", policy.onMaxRetries().name());
             hints.put("activeEnabled", String.valueOf(policy.activeEnabled()));
+            hints.put("testScreen", String.valueOf(testScreen));
             result.success(hints);
         } catch (IllegalArgumentException e) {
             result.error(error(LIVENESS_BAD_REQUEST, "Unknown workflow " + workflow));
@@ -169,6 +177,16 @@ public class LivenessApiImpl implements LivenessPigeon.LivenessApi {
             return;
         }
         store.reset(workflow, fieldId);
+        result.success(null);
+    }
+
+    @Override
+    public void setTestOverrides(@NonNull String overrides, @NonNull LivenessPigeon.Result<Void> result) {
+        if (!testScreen) {
+            result.error(error(TEST_OVERRIDES_NOT_ALLOWED, "This build has no liveness test screen"));
+            return;
+        }
+        testOverrides = overrides;
         result.success(null);
     }
 
@@ -189,7 +207,7 @@ public class LivenessApiImpl implements LivenessPigeon.LivenessApi {
         if (local != null) {
             settings.putAll(local);
         }
-        return LivenessSettings.merge(settings, overrides);
+        return LivenessSettings.merge(settings, (overrides == null ? "" : overrides) + ";" + testOverrides);
     }
 
     private static int clientRetryLimit(Map<String, String> config) {

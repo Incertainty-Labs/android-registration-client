@@ -35,6 +35,11 @@ abstract class LivenessApi {
   @async
   void resetAttempts(String workflow, String fieldId);
 
+  /// Test screen only (B-21): config overrides for the next sessions, e.g. "stub.force=PAD"; "" clears them.
+  /// Refused with TEST_OVERRIDES_NOT_ALLOWED unless the build allows the test screen (getLivenessConfig "testScreen").
+  @async
+  void setTestOverrides(String overrides);
+
   /// Liveness → SBI capture → passive PAD + binder → offline 1:1 FACE match.
   @async
   AuthResultDto authenticateWithFace(String userId, String workflow);
