@@ -13,5 +13,8 @@ abstract class LivenessService {
   /// Clears the attempt counter for a field, e.g. for a new registration.
   Future<void> resetAttempts(String workflow, String fieldId);
 
+  /// Test screen only (B-21): config overrides for the next checks, e.g. "stub.force=PAD"; "" clears them.
+  Future<void> setTestOverrides(String overrides);
+
   factory LivenessService() => getLivenessServiceImpl();
 }

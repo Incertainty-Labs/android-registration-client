@@ -43,6 +43,31 @@ class LivenessProvider with ChangeNotifier {
     return result?.finalState == 'PASSED' && result?.decision == 'LIVE';
   }
 
+  /// UI hints for [workflow] (enabled, mode, maxAttempts, onMaxRetries, activeEnabled, testScreen); empty when
+  /// the config cannot be read.
+  Future<Map<String?, String?>> hints(String workflow) async {
+    try {
+      return await _service.getLivenessConfig(workflow);
+    } on PlatformException {
+      return {};
+    }
+  }
+
+  /// Whether this build has the B-21 liveness test screen.
+  Future<bool> testScreenAllowed() async => (await hints('RESIDENT_REGISTRATION'))['testScreen'] == 'true';
+
+  /// Test screen only: turns liveness on and plays the stub [scenario] (e.g. "PAD") in the next checks; null for
+  /// the build's default scenario. The screen exists to exercise liveness, even where the server leaves it off.
+  /// Returns null, or the PlatformException code when the build refuses it.
+  Future<String?> useTestScenario(String? scenario) async {
+    try {
+      await _service.setTestOverrides(scenario == null ? 'enabled=true' : 'enabled=true;stub.force=$scenario');
+      return null;
+    } on PlatformException catch (e) {
+      return e.code;
+    }
+  }
+
   /// Runs one check. Returns its result, or null when it could not start (see [errorFor]) or a check is already
   /// open.
   Future<LivenessResultDto?> start(String workflow, String fieldId) async {
