@@ -12,8 +12,9 @@ import io.mosip.registration.livenessmanager.session.LivenessSessionStore;
 
 /**
  * Adds the API.md §9 liveness keys (LIVENESS_DECISION, _SCORE, _THRESHOLD, _MODE, _CHALLENGES, _ENGINE_VERSION and,
- * from the real engine, _EVIDENCE_DIGEST) to a resident's face BIR, from the field's passed liveness check (B-12).
- * Without a passed check, for example when liveness is off, the BIR stays as MOSIP builds it.
+ * from the real engine, _EVIDENCE_DIGEST) to a resident's face BIR, from the passed check that let the face capture
+ * through (B-12), not from whatever check ran last. Without one, for example when liveness is off, the BIR stays as
+ * MOSIP builds it.
  */
 public final class LivenessPacketEvidence {
 
@@ -36,8 +37,8 @@ public final class LivenessPacketEvidence {
         if (dto == null || !FACE_MODALITY.equalsIgnoreCase(dto.getModality()) || dto.isException()) {
             return;
         }
-        LivenessResult result = store.lastResult(RESIDENT_WORKFLOW, fieldId);
-        LivenessPolicy policy = store.lastPolicy(RESIDENT_WORKFLOW, fieldId);
+        LivenessResult result = store.capturedResult(RESIDENT_WORKFLOW, fieldId);
+        LivenessPolicy policy = store.capturedPolicy(RESIDENT_WORKFLOW, fieldId);
         if (result == null || policy == null || result.finalState() != SessionState.PASSED) {
             return;
         }

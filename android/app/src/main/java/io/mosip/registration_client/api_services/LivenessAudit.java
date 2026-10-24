@@ -16,7 +16,8 @@ import io.mosip.registration.livenessmanager.result.LivenessResultSummary;
 /**
  * Records the API.md §8 face liveness audit events (Android AuditEvent REG-EVT-115 to 125) with
  * {@code auditWithArguments}: one at the start of a check, and those a finished check's full result shows. Never
- * records a face, only codes, scores and counts.
+ * records a face, only codes, scores and counts. LIVENESS_MAX_RETRIES is recorded once, when the last allowed attempt
+ * fails; later checks refused at the limit (LIV-011, before any session) record nothing more.
  */
 final class LivenessAudit {
 

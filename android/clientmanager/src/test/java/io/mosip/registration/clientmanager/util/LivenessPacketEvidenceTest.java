@@ -85,6 +85,37 @@ public class LivenessPacketEvidenceTest {
     }
 
     @Test
+    public void tcAnd18_aLaterFailedCheck_keepsTheCapturedFacesEvidence() {
+        runCheck(passed());
+        laterCheck(LivenessResult.builder(SessionState.FAILED, Decision.INCONCLUSIVE)
+                .errorCode(LivenessErrorCode.CHALLENGE_FAILED).build());
+
+        LivenessPacketEvidence.addTo(store, bir, face(false), FACE);
+
+        assertEquals("LIVE", bir.getOthers().get("LIVENESS_DECISION"));
+        assertEquals("0.93", bir.getOthers().get("LIVENESS_SCORE"));
+    }
+
+    @Test
+    public void tcAnd18_anUnusedLaterPass_doesNotReplaceTheEvidence() {
+        runCheck(passed());
+        laterCheck(LivenessResult.builder(SessionState.PASSED, Decision.LIVE).passiveScore(0.50).build());
+
+        LivenessPacketEvidence.addTo(store, bir, face(false), FACE);
+
+        assertEquals("0.93", bir.getOthers().get("LIVENESS_SCORE"));
+    }
+
+    @Test
+    public void tcAnd18_aPassNeverUsedForACapture_addsNothing() {
+        laterCheck(passed());
+
+        LivenessPacketEvidence.addTo(store, bir, face(false), FACE);
+
+        assertFalse(bir.getOthers().containsKey("LIVENESS_DECISION"));
+    }
+
+    @Test
     public void tcAnd18_anotherFieldsPass_addsNothing() {
         runCheck(passed());
 
@@ -98,6 +129,16 @@ public class LivenessPacketEvidenceTest {
         config.put(LivenessConfigLoader.PREFIX + "enabled", "true");
         LivenessPolicy policy = LivenessConfigLoader.load(config, Workflow.RESIDENT_REGISTRATION);
         store.begin(WORKFLOW, FACE, policy, 0);
+        store.complete(WORKFLOW, FACE, result, false);
+        // The capture that follows uses the pass (#23 guard), which marks this check as the captured one
+        store.consumePass(WORKFLOW, FACE, 120_000L);
+    }
+
+    /** A later check on the same field, with no capture after it. */
+    private void laterCheck(LivenessResult result) {
+        Map<String, String> config = new HashMap<>();
+        config.put(LivenessConfigLoader.PREFIX + "enabled", "true");
+        store.begin(WORKFLOW, FACE, LivenessConfigLoader.load(config, Workflow.RESIDENT_REGISTRATION), 0);
         store.complete(WORKFLOW, FACE, result, false);
     }
 
