@@ -45,3 +45,8 @@ These go in `android/local.properties`, which is not in git, or are passed with 
 - `mosip.liveness.testScreen=true`: gives a release build the liveness test screen (B-21). Debug builds always have it. It is reached from the login page, before any login, and lets anyone pick the stub scenario (for example `PAD`), which is fine on the demo phone. The screen clears its overrides and resets its attempts when it closes.
 
 **Never set these flags for a build used in the field.**
+
+## Known limitations
+
+- **Attempt counters are kept in memory** (`LivenessSessionStore`). Restarting the app gives a fresh set of attempts, which weakens the max-retries limit (LIV-011) against someone who restarts the app on purpose. The fix is to persist the counters in the app's database; this is planned, not done.
+- **The liveness gate is enforced natively only per capture** (#23: a fresh pass covers one face capture, for 120 s). It does not tie the capture to the live session; the capture binder (B-07) does that.
