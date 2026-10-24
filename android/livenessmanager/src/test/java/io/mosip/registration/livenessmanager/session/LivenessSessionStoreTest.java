@@ -89,6 +89,34 @@ public class LivenessSessionStoreTest {
         assertEquals(1, store.begin(WORKFLOW, FACE, policy(3), 0));
     }
 
+    @Test
+    public void tcAnd_attemptsLeft_noLimitReached() {
+        store.begin(WORKFLOW, FACE, policy(2), 0);
+        store.complete(WORKFLOW, FACE, challengeFailed(), false);
+
+        assertNull(store.limitReached(WORKFLOW, FACE));
+    }
+
+    @Test
+    public void tcAnd_attemptsUsedUp_limitReachedIsTheMaxRetriesFailure() {
+        store.begin(WORKFLOW, FACE, policy(1), 0);
+        store.complete(WORKFLOW, FACE, challengeFailed(), false);
+
+        LivenessResultSummary summary = store.limitReached(WORKFLOW, FACE);
+
+        assertEquals("FAILED", summary.finalState());
+        assertEquals("LIV-011", summary.errorCode());
+        assertEquals("liveness.fail.max_retries", summary.messageKey());
+        assertFalse(summary.retryAllowed());
+        assertEquals(1, summary.attempt());
+        assertEquals(1, summary.maxAttempts());
+    }
+
+    @Test
+    public void tcAnd_fieldNeverBegun_noLimitReached() {
+        assertNull(store.limitReached(WORKFLOW, FACE));
+    }
+
     @Test(expected = IllegalStateException.class)
     public void tcAnd_completeWithoutBegin_isRejected() {
         store.complete(WORKFLOW, FACE, passed(), false);

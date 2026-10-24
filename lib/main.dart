@@ -15,6 +15,7 @@ import 'package:registration_client/provider/connectivity_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'package:registration_client/provider/global_provider.dart';
+import 'package:registration_client/provider/liveness_provider.dart';
 import 'package:registration_client/provider/registration_task_provider.dart';
 import 'package:registration_client/provider/sync_provider.dart';
 import 'package:registration_client/ui/login_page.dart';
@@ -173,6 +174,9 @@ class RegistrationClientApp extends StatelessWidget {
         ChangeNotifierProvider(
           lazy: false,
           create: (_) => ApprovePacketsProvider(),
+        ),
+        ChangeNotifierProvider(
+          create: (_) => LivenessProvider(),
         ),
       ],
       child: const BuildApp(),

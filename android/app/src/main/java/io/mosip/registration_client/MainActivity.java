@@ -71,6 +71,7 @@ import io.mosip.registration.transliterationmanager.service.TransliterationServi
 import io.mosip.registration_client.api_services.AuditDetailsApi;
 import io.mosip.registration_client.api_services.AuthenticationApi;
 import io.mosip.registration_client.api_services.BiometricsDetailsApi;
+import io.mosip.registration_client.api_services.LivenessApiImpl;
 import io.mosip.registration_client.api_services.CommonDetailsApi;
 import io.mosip.registration_client.api_services.DashBoardDetailsApi;
 import io.mosip.registration_client.api_services.DemographicsDetailsApi;
@@ -94,6 +95,7 @@ import io.mosip.registration_client.model.DashBoardPigeon;
 import io.mosip.registration_client.model.DemographicsDataPigeon;
 import io.mosip.registration_client.model.DocumentCategoryPigeon;
 import io.mosip.registration_client.model.DynamicResponsePigeon;
+import io.mosip.registration_client.model.LivenessPigeon;
 import io.mosip.registration_client.model.GlobalConfigSettingsPigeon;
 import io.mosip.registration_client.model.MachinePigeon;
 import io.mosip.registration_client.model.PacketAuthPigeon;
@@ -162,6 +164,9 @@ public class MainActivity extends FlutterActivity {
 
     @Inject
     BiometricsDetailsApi biometricsDetailsApi;
+
+    @Inject
+    LivenessApiImpl livenessApi;
 
     @Inject
     PacketAuthenticationApi packetAuthenticationApi;
@@ -402,6 +407,8 @@ public class MainActivity extends FlutterActivity {
         ProcessSpecPigeon.ProcessSpecApi.setup(flutterEngine.getDartExecutor().getBinaryMessenger(), processSpecDetailsApi);
         BiometricsPigeon.BiometricsApi.setup(flutterEngine.getDartExecutor().getBinaryMessenger(),biometricsDetailsApi);
         biometricsDetailsApi.setCallbackActivity(this);
+        LivenessPigeon.LivenessApi.setup(flutterEngine.getDartExecutor().getBinaryMessenger(), livenessApi);
+        livenessApi.setCallbackActivity(this);
         RegistrationDataPigeon.RegistrationDataApi.setup(flutterEngine.getDartExecutor().getBinaryMessenger(), registrationApi);
         PacketAuthPigeon.PacketAuthApi.setup(flutterEngine.getDartExecutor().getBinaryMessenger(), packetAuthenticationApi);
         packetAuthenticationApi.setCallbackActivity(this);
@@ -424,6 +431,9 @@ public class MainActivity extends FlutterActivity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        if (livenessApi.onActivityResult(requestCode, resultCode, data)) {
+            return;
+        }
         biometricsDetailsApi.onSbiActivityResult(requestCode, resultCode, data == null ? null : data.getExtras());
     }
 }

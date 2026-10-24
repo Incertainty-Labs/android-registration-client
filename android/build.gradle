@@ -62,6 +62,10 @@ def nonBlank = { value -> value == null ? null : (value.toString().trim() ?: nul
 def serverUrl = nonBlank(findProperty('mosip.serverBaseURL')) ?:
         nonBlank(localProps.getProperty('mosip.serverBaseURL')) ?:
         'https://api-internal.sandbox.xyz.net'
+// Liveness config overrides for BuildConfig.LIVENESS_OVERRIDES, e.g. mosip.liveness.overrides=enabled=true in
+// local.properties: a demo build turns liveness on while the server config leaves it off. Unset means none.
+def livenessOverrideValue = nonBlank(findProperty('mosip.liveness.overrides')) ?:
+        nonBlank(localProps.getProperty('mosip.liveness.overrides')) ?: ''
 
 ext {
     compileSdkVersion = 34
@@ -75,6 +79,7 @@ ext {
     clientmanagerLibVersionName = "\"1.0.0\""
 
     serverBaseURL = "\"${serverUrl}\""
+    livenessOverrides = "\"${livenessOverrideValue}\""
     serverHealthCheckPath = "\"/v1/syncdata/actuator/health\""
     serverActuatorInfoPath = "\"/v1/syncdata/actuator/info\""
     debugPassword = "\"your-debug-password\""

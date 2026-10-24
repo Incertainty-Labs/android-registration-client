@@ -146,6 +146,14 @@ public class LivenessActivity extends ComponentActivity {
         policy = LivenessConfigLoader.load(request.config(), workflow);
         diagnostics = "true".equalsIgnoreCase(request.config().get(DIAGNOSTICS_KEY));
         attempt = store.begin(request.workflow(), request.fieldId(), policy, clientRetryLimit());
+        LivenessResultSummary limit = store.limitReached(request.workflow(), request.fieldId());
+        if (limit != null) {
+            // Attempts used up: no new session, not even the camera (LIV-011)
+            finished = true;
+            setResult(RESULT_OK, LivenessContract.resultIntent(limit));
+            finish();
+            return;
+        }
 
         setContentView(R.layout.liveness_activity);
         preview = findViewById(R.id.liveness_preview);
