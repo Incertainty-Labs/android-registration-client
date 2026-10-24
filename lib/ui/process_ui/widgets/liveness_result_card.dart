@@ -60,7 +60,7 @@ class LivenessResultCard extends StatelessWidget {
 }
 
 /// S12 with `on.max.retries=EXCEPTION_FLOW`: points the operator to the face exception. BLOCK, and
-/// SUPERVISOR_OVERRIDE until the supervisor override exists (B-10), show nothing more. Reads the config once, not
+/// SUPERVISOR_OVERRIDE (not built on Android; it behaves like BLOCK), show nothing more. Reads the config once, not
 /// on every rebuild.
 class _ExceptionHint extends StatefulWidget {
   const _ExceptionHint({required this.workflow});

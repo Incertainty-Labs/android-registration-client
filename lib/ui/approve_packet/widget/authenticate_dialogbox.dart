@@ -3,6 +3,7 @@ import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:registration_client/provider/approve_packets_provider.dart';
+import 'package:registration_client/ui/approve_packet/widget/supervisor_face_approval.dart';
 import 'package:registration_client/utils/app_config.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 
@@ -73,6 +74,18 @@ class _AuthenticateDialogBoxState extends State<AuthenticateDialogBox> {
       return true;
     }
     return false;
+  }
+
+  /// The supervisor's face matched: approve the selected packets, as after the password.
+  Future<void> _approveWithFace() async {
+    try {
+      await context.read<ApprovePacketsProvider>().submitSelected();
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+    } catch (e) {
+      log(e.toString());
+    }
   }
 
   Future<void> submitReviews() async {
@@ -169,6 +182,13 @@ class _AuthenticateDialogBoxState extends State<AuthenticateDialogBox> {
                     ),
                   ),
                   const SizedBox(height: 24.0),
+
+                  // UI_UX_SPEC §6.5: face above the password for a supervisor (B-10); the password stays
+                  SupervisorFaceApproval(
+                    userId: authProvider.currentUser.userId,
+                    isSupervisor: authProvider.isSupervisor,
+                    onApproved: _approveWithFace,
+                  ),
 
                   // Username TextFeild
                   Padding(
