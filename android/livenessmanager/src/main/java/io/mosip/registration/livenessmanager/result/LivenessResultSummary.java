@@ -1,5 +1,9 @@
 package io.mosip.registration.livenessmanager.result;
 
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -46,6 +50,23 @@ public final class LivenessResultSummary {
         this.retryAllowed = retryAllowed;
     }
 
+    private LivenessResultSummary(JSONObject json) throws JSONException {
+        this.decision = json.getString("decision");
+        this.finalState = json.getString("finalState");
+        this.errorCode = json.optString("errorCode", null);
+        this.messageKey = json.optString("messageKey", null);
+        this.passiveScore = json.has("passiveScore") ? Double.valueOf(json.getDouble("passiveScore")) : null;
+        List<String> list = new ArrayList<>();
+        JSONArray array = json.getJSONArray("challenges");
+        for (int i = 0; i < array.length(); i++) {
+            list.add(array.getString(i));
+        }
+        this.challenges = Collections.unmodifiableList(list);
+        this.attempt = json.getInt("attempt");
+        this.maxAttempts = json.getInt("maxAttempts");
+        this.retryAllowed = json.getBoolean("retryAllowed");
+    }
+
     /**
      * @param result             the engine result
      * @param attempt            the attempt this result belongs to, 1-based
@@ -57,6 +78,38 @@ public final class LivenessResultSummary {
     public static LivenessResultSummary of(LivenessResult result, int attempt, int maxAttempts,
                                            boolean retryAllowed, boolean diagnosticsEnabled) {
         return new LivenessResultSummary(result, attempt, maxAttempts, retryAllowed, diagnosticsEnabled);
+    }
+
+    /**
+     * Reads a summary written by {@link #toJson()}.
+     *
+     * @param json the JSON text
+     * @return the summary
+     * @throws JSONException if the text is not a summary
+     */
+    public static LivenessResultSummary fromJson(String json) throws JSONException {
+        return new LivenessResultSummary(new JSONObject(json));
+    }
+
+    /**
+     * @return the summary as JSON, for the {@code liveness.result} extra (API.md §10); null fields are left
+     *         out
+     */
+    public String toJson() {
+        try {
+            JSONObject json = new JSONObject()
+                    .put("decision", decision)
+                    .put("finalState", finalState)
+                    .put("challenges", new JSONArray(challenges))
+                    .put("attempt", attempt)
+                    .put("maxAttempts", maxAttempts)
+                    .put("retryAllowed", retryAllowed);
+            // JSONObject.put leaves out a null value
+            json.put("errorCode", errorCode).put("messageKey", messageKey).put("passiveScore", passiveScore);
+            return json.toString();
+        } catch (JSONException e) {
+            throw new IllegalStateException("Cannot write the liveness summary", e);
+        }
     }
 
     private static String messageKeyFor(LivenessResult result, boolean retryAllowed) {

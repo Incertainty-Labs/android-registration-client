@@ -1,0 +1,163 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- M-1 liveness screen (UI_UX_SPEC §6.2): camera with the oval overlay on top, solid prompt panel below -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@android:color/black"
+    android:orientation="vertical">
+
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <androidx.camera.view.PreviewView
+            android:id="@+id/liveness_preview"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+
+        <io.mosip.registration.livenessmanager.ui.LivenessOverlayView
+            android:id="@+id/liveness_overlay"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+
+        <TextView
+            android:id="@+id/liveness_dismiss"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_gravity="top|start"
+            android:contentDescription="@string/liveness_button_cancel"
+            android:gravity="center"
+            android:text="@string/liveness_dismiss_glyph"
+            android:textColor="@color/liveness_info"
+            android:textSize="22sp" />
+
+        <TextView
+            android:id="@+id/liveness_step"
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"
+            android:layout_gravity="top|end"
+            android:gravity="center"
+            android:paddingEnd="16dp"
+            android:textColor="@color/liveness_info"
+            android:textSize="16sp"
+            android:visibility="gone" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <TextView
+                android:id="@+id/liveness_status"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:accessibilityLiveRegion="polite"
+                android:gravity="center"
+                android:textColor="@color/liveness_info"
+                android:textSize="18sp" />
+
+            <TextView
+                android:id="@+id/liveness_guidance"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:accessibilityLiveRegion="polite"
+                android:gravity="center"
+                android:paddingTop="4dp"
+                android:textColor="@color/liveness_guidance"
+                android:textSize="16sp"
+                android:visibility="gone" />
+        </LinearLayout>
+    </FrameLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@color/liveness_panel"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/liveness_cue"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:importantForAccessibility="no"
+                android:paddingEnd="12dp"
+                android:textColor="@color/liveness_info"
+                android:textSize="32sp"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/liveness_prompt"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:accessibilityLiveRegion="assertive"
+                android:textColor="@color/liveness_info"
+                android:textSize="22sp" />
+        </LinearLayout>
+
+        <ProgressBar
+            android:id="@+id/liveness_time_bar"
+            style="@android:style/Widget.DeviceDefault.ProgressBar.Horizontal"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:max="1000"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/liveness_toast"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:accessibilityLiveRegion="polite"
+            android:textColor="@color/liveness_success"
+            android:textSize="16sp"
+            android:visibility="gone" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:gravity="end"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/liveness_cancel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/liveness_button_cancel"
+                android:visibility="gone" />
+
+            <Button
+                android:id="@+id/liveness_open_settings"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/liveness_button_open_settings"
+                android:visibility="gone" />
+
+            <Button
+                android:id="@+id/liveness_retry"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/liveness_retry_button"
+                android:visibility="gone" />
+
+            <Button
+                android:id="@+id/liveness_close"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/liveness_button_close"
+                android:visibility="gone" />
+        </LinearLayout>
+    </LinearLayout>
+</LinearLayout>

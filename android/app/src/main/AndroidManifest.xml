@@ -62,5 +62,9 @@
         <intent>
             <action android:name="android.support.customtabs.action.CustomTabsService" />
         </intent>
+        <!-- SBI device apps (discovery, info, capture); Android 11+ hides them from queries without this -->
+        <intent>
+            <action android:name="io.sbi.device" />
+        </intent>
     </queries>
 </manifest>

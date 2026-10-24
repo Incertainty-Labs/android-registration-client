@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.content.pm.ResolveInfo;
 import android.net.Uri;
 import android.os.Bundle;
 
@@ -37,6 +38,7 @@ import io.mosip.registration_client.model.BiometricsPigeon;
 import static org.junit.Assert.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -59,11 +61,15 @@ public class BiometricsDetailsApiSbiFlowTest {
     private final RegistrationService registrationService = mock(RegistrationService.class);
     @SuppressWarnings("unchecked")
     private final BiometricsPigeon.Result<String> result = mock(BiometricsPigeon.Result.class);
+    private final PackageManager packageManager = mock(PackageManager.class);
     private BiometricsDetailsApi api;
 
     @Before
     public void setUp() {
-        when(activity.getPackageManager()).thenReturn(mock(PackageManager.class));
+        // An SBI app is visible to the package query (B-D1); tcAnd16_whenNoSbiAppIsVisible removes it
+        when(activity.getPackageManager()).thenReturn(packageManager);
+        when(packageManager.queryIntentActivities(any(Intent.class), anyInt()))
+                .thenReturn(Collections.singletonList(new ResolveInfo()));
         // master stores the capture request's transactionId on the registration before starting RCAPTURE
         CaptureRequest captureRequest = new CaptureRequest();
         captureRequest.setTransactionId("TXN-1");
@@ -90,6 +96,16 @@ public class BiometricsDetailsApiSbiFlowTest {
         api.invokeDiscoverSbi("individualBiometrics", "Face", result);
 
         assertEquals("REG-SBI-104", errorCode());
+    }
+
+    @Test
+    public void tcAnd16_whenNoSbiAppIsVisible_failsWithDeviceNotFoundWithoutStartingDiscovery() {
+        when(packageManager.queryIntentActivities(any(Intent.class), anyInt())).thenReturn(Collections.emptyList());
+
+        api.invokeDiscoverSbi("individualBiometrics", "Face", result);
+
+        assertEquals("REG-SBI-104", errorCode());
+        verify(activity, never()).startActivityForResult(any(Intent.class), anyInt());
     }
 
     @Test

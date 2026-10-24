@@ -11,6 +11,7 @@ import android.app.Activity;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.content.pm.ResolveInfo;
 import android.graphics.Bitmap;
 import android.net.Uri;
 import android.os.Bundle;
@@ -858,10 +859,17 @@ public class BiometricsDetailsApi implements BiometricsPigeon.BiometricsApi {
     //     return map;
     // }
 
+    /**
+     * @throws ActivityNotFoundException when no SBI app answers the intent, which every caller reports as
+     *                                    "device not found" (REG-SBI-104); needs the {@code <queries>} entry on
+     *                                    Android 11+ (B-D1)
+     */
     private void queryPackage(Intent intent) throws ClientCheckedException {
-        List activities = activity.getPackageManager().queryIntentActivities(intent, PackageManager.MATCH_ALL);
-        // if(activities.size() == 0)
-        // throw new ClientCheckedException("Supported apps not found!");
+        List<ResolveInfo> activities = activity.getPackageManager().queryIntentActivities(intent,
+                PackageManager.MATCH_ALL);
+        if (activities == null || activities.isEmpty()) {
+            throw new ActivityNotFoundException("No SBI app handles " + intent.getAction());
+        }
     }
 
     private Modality getModality(String modality) {

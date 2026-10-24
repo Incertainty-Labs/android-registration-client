@@ -271,4 +271,66 @@ public class LivenessScreenModelTest {
         assertEquals(ScreenState.Cue.LEFT, screen.cue());
         assertEquals(0.6f, screen.ringProgress(), 0.0001f);
     }
+
+    @Test
+    public void tcUx_s7_enteringNeutralHold_resetsTheRing() {
+        LivenessScreenModel model = new LivenessScreenModel();
+        model.onChallenge(new Challenge(ChallengeType.SMILE, 5000L), 2, 2);
+        model.onProgress(0.8f);
+
+        ScreenState screen = model.onStateChanged(SessionState.NEUTRAL_HOLD,
+                new UserPrompt("liveness.prompt.neutral", PromptLevel.INFO));
+
+        assertEquals(0f, screen.ringProgress(), 0.0001f);
+    }
+
+    @Test
+    public void tcUx_s7_infoDuringNeutralHold_clearsTheGuidanceAndKeepsTheRing() {
+        LivenessScreenModel model = new LivenessScreenModel();
+        model.onChallenge(new Challenge(ChallengeType.SMILE, 5000L), 2, 2);
+        model.onStateChanged(SessionState.NEUTRAL_HOLD, new UserPrompt("liveness.prompt.neutral", PromptLevel.INFO));
+        model.onProgress(0.5f);
+        model.onStateChanged(SessionState.NEUTRAL_HOLD,
+                new UserPrompt("liveness.guidance.look_at_camera", PromptLevel.GUIDANCE));
+
+        ScreenState screen = model.onStateChanged(SessionState.NEUTRAL_HOLD,
+                new UserPrompt("liveness.prompt.neutral", PromptLevel.INFO));
+
+        assertNull(screen.guidanceKey());
+        assertEquals("liveness.prompt.neutral", screen.promptKey());
+        assertEquals(2, screen.stepIndex());
+        assertEquals(0.5f, screen.ringProgress(), 0.0001f);
+    }
+
+    @Test
+    public void tcUx_s4_guidanceDuringPassiveCheck_keepsNoActionNeededAndTheRing() {
+        LivenessScreenModel model = new LivenessScreenModel();
+        model.onStateChanged(SessionState.PASSIVE_CHECK, new UserPrompt("liveness.status.checking", PromptLevel.INFO));
+        model.onProgress(0.4f);
+
+        ScreenState screen = model.onStateChanged(SessionState.PASSIVE_CHECK,
+                new UserPrompt("liveness.guidance.improve_lighting", PromptLevel.GUIDANCE));
+
+        assertEquals("liveness.guidance.improve_lighting", screen.guidanceKey());
+        assertEquals("liveness.status.checking", screen.statusKey());
+        assertEquals("liveness.status.no_action", screen.promptKey());
+        assertEquals(0.4f, screen.ringProgress(), 0.0001f);
+    }
+
+    @Test
+    public void tcUx_s4_infoAfterGuidanceDuringPassiveCheck_clearsTheGuidanceAndKeepsTheRing() {
+        LivenessScreenModel model = new LivenessScreenModel();
+        model.onStateChanged(SessionState.PASSIVE_CHECK, new UserPrompt("liveness.status.checking", PromptLevel.INFO));
+        model.onProgress(0.4f);
+        model.onStateChanged(SessionState.PASSIVE_CHECK,
+                new UserPrompt("liveness.guidance.improve_lighting", PromptLevel.GUIDANCE));
+
+        ScreenState screen = model.onStateChanged(SessionState.PASSIVE_CHECK,
+                new UserPrompt("liveness.status.checking", PromptLevel.INFO));
+
+        assertNull(screen.guidanceKey());
+        assertEquals("liveness.status.checking", screen.statusKey());
+        assertEquals("liveness.status.no_action", screen.promptKey());
+        assertEquals(0.4f, screen.ringProgress(), 0.0001f);
+    }
 }
