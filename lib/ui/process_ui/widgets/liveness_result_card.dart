@@ -23,12 +23,13 @@ class LivenessResultCard extends StatelessWidget {
     if (provider.isChecking(workflow, fieldId)) {
       return _line(context, Icons.hourglass_top, livenessText(l10n, 'liveness.status.checking'), null);
     }
+    // Only a check that could not start is an error to show; a check already open or liveness off is not
     final error = provider.errorFor(workflow, fieldId);
-    if (error != null && error != 'LIVENESS_DISABLED') {
+    if (error == 'LIVENESS_START_FAILED' || error == 'LIVENESS_BAD_REQUEST') {
       return _line(context, Icons.error_outline, livenessText(l10n, 'liveness.error.engine'), Colors.red.shade700);
     }
     final result = provider.resultFor(workflow, fieldId);
-    if (result == null || result.finalState == 'CANCELLED') {
+    if (error != null || result == null || result.finalState == 'CANCELLED') {
       return const SizedBox.shrink();
     }
     if (provider.passedFor(workflow, fieldId)) {
@@ -59,16 +60,24 @@ class LivenessResultCard extends StatelessWidget {
 }
 
 /// S12 with `on.max.retries=EXCEPTION_FLOW`: points the operator to the face exception. BLOCK, and
-/// SUPERVISOR_OVERRIDE until the supervisor override exists (B-10), show nothing more.
-class _ExceptionHint extends StatelessWidget {
+/// SUPERVISOR_OVERRIDE until the supervisor override exists (B-10), show nothing more. Reads the config once, not
+/// on every rebuild.
+class _ExceptionHint extends StatefulWidget {
   const _ExceptionHint({required this.workflow});
 
   final String workflow;
 
   @override
+  State<_ExceptionHint> createState() => _ExceptionHintState();
+}
+
+class _ExceptionHintState extends State<_ExceptionHint> {
+  late final Future<Map<String?, String?>> _hints = context.read<LivenessProvider>().hints(widget.workflow);
+
+  @override
   Widget build(BuildContext context) {
     return FutureBuilder<Map<String?, String?>>(
-      future: context.read<LivenessProvider>().hints(workflow),
+      future: _hints,
       builder: (context, hints) {
         if (hints.data?['onMaxRetries'] != 'EXCEPTION_FLOW') {
           return const SizedBox.shrink();
