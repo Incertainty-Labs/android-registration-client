@@ -310,6 +310,33 @@ public class LivenessActivityTest {
     }
 
     @Test
+    public void tcSec02_aWholeSession_writesNoFramesToDisk() {
+        java.util.Set<String> before = filesUnder(app.getCacheDir(), app.getFilesDir(), app.getNoBackupFilesDir());
+
+        LivenessActivity activity = launch("PASS_ACTIVE").get();
+        runUntilResult();
+        Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(LivenessActivity.FINAL_SCREEN_MS));
+        assertEquals("PASSED", result(activity).finalState());
+
+        assertEquals(before, filesUnder(app.getCacheDir(), app.getFilesDir(), app.getNoBackupFilesDir()));
+    }
+
+    private static java.util.Set<String> filesUnder(java.io.File... roots) {
+        java.util.Set<String> paths = new java.util.TreeSet<>();
+        java.util.ArrayDeque<java.io.File> todo = new java.util.ArrayDeque<>(java.util.Arrays.asList(roots));
+        while (!todo.isEmpty()) {
+            java.io.File file = todo.pop();
+            java.io.File[] children = file.listFiles();
+            if (children == null) {
+                paths.add(file.getAbsolutePath());
+            } else {
+                todo.addAll(java.util.Arrays.asList(children));
+            }
+        }
+        return paths;
+    }
+
+    @Test
     public void tcAnd_requestWithoutWorkflow_finishesWithoutAResult() {
         Intent intent = new Intent(app, LivenessActivity.class);
 
