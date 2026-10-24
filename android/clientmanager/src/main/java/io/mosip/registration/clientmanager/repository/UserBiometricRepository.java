@@ -88,26 +88,38 @@ public class UserBiometricRepository {
         return faces;
     }
 
+    /** Marks a face template saved by the debug seed (R2), so only seeded rows are ever replaced. */
+    public static final String SEED_FACE_ATTRIBUTE = "face-seed";
+
     /**
-     * Debug builds only (B-21 seed, R2): makes {@code iso} the user's only face template, keeping their other
-     * biometrics, so face authentication can be shown without online onboarding.
+     * Debug builds only (B-21 seed, R2): saves {@code iso} as the user's seeded face template, so face
+     * authentication can be shown without online onboarding. It replaces only earlier seeded rows, and never runs
+     * for a user with an onboarded face template, so a real operator's template can never be overwritten.
      *
      * @param userId       the operator or supervisor
      * @param iso          the ISO 19794-5 face image
      * @param qualityScore the capture's quality score
+     * @return false, saving nothing, when the user has an onboarded (non-seed) face template
      */
-    public void replaceFaceTemplate(String userId, byte[] iso, int qualityScore) {
+    public boolean replaceSeedFaceTemplate(String userId, byte[] iso, int qualityScore) {
+        for (UserBiometric existing : userBiometricDao.findByUsrId(userId)) {
+            if (BiometricType.FACE.value().equalsIgnoreCase(existing.getBioTypeCode())
+                    && !SEED_FACE_ATTRIBUTE.equals(existing.getBioAttributeCode())) {
+                return false;
+            }
+        }
         UserBiometric face = new UserBiometric();
         face.setUsrId(userId);
         face.setBioTypeCode(BiometricType.FACE.value());
-        face.setBioAttributeCode("face");
+        face.setBioAttributeCode(SEED_FACE_ATTRIBUTE);
         face.setBioTemplate(iso);
         face.setQualityScore(qualityScore);
         face.setIsDeleted(false);
-        userBiometricDao.deleteFaceByUsrId(userId);
+        userBiometricDao.deleteSeedFaceByUsrId(userId);
         List<UserBiometric> faces = new ArrayList<>();
         faces.add(face);
         userBiometricDao.insertAllUserBiometrics(faces);
+        return true;
     }
 
     public String saveOnboardStatus(String userId) {

@@ -118,17 +118,24 @@ public class FaceAuthServiceTest {
     }
 
     @Test
-    public void tcAnd10_seed_savesTheCapturedFaceAsTheUsersTemplate() {
-        assertEquals(true, service.seedTemplate(USER, capture()));
+    public void tcAnd10_seed_savesTheCapturedFaceAsTheUsersSeedTemplate() {
+        when(templates.replaceSeedFaceTemplate(USER, PROBE, 90)).thenReturn(true);
 
-        verify(templates).replaceFaceTemplate(USER, PROBE, 90);
+        assertEquals(FaceAuthService.SeedOutcome.SAVED, service.seedTemplate(USER, capture()));
+    }
+
+    @Test
+    public void tcAnd10_seed_neverReplacesAnOnboardedTemplate() {
+        when(templates.replaceSeedFaceTemplate(USER, PROBE, 90)).thenReturn(false);
+
+        assertEquals(FaceAuthService.SeedOutcome.ENROLLED, service.seedTemplate(USER, capture()));
     }
 
     @Test
     public void tcAnd10_seedWithoutACapture_savesNothing() {
-        assertEquals(false, service.seedTemplate(USER, Collections.emptyList()));
+        assertEquals(FaceAuthService.SeedOutcome.NO_CAPTURE, service.seedTemplate(USER, Collections.emptyList()));
 
-        verify(templates, never()).replaceFaceTemplate(any(), any(), org.mockito.ArgumentMatchers.anyInt());
+        verify(templates, never()).replaceSeedFaceTemplate(any(), any(), org.mockito.ArgumentMatchers.anyInt());
     }
 
     private void answer(Match match) {

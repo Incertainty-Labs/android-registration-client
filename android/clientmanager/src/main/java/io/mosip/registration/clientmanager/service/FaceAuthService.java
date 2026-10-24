@@ -49,6 +49,16 @@ public class FaceAuthService {
         NO_CAPTURE
     }
 
+    /** How a debug seed (R2) ended. */
+    public enum SeedOutcome {
+        /** The capture is now the user's seeded face template. */
+        SAVED,
+        /** The user has an onboarded face template, which a seed never replaces. */
+        ENROLLED,
+        /** No captured face to save. */
+        NO_CAPTURE
+    }
+
     private static final String TAG = FaceAuthService.class.getSimpleName();
 
     private final UserBiometricRepository userBiometricRepository;
@@ -102,16 +112,16 @@ public class FaceAuthService {
      *
      * @param userId  the operator or supervisor
      * @param capture the face just captured through the SBI
-     * @return false when there is no face to save
+     * @return how the seed ended; an onboarded face template is never replaced
      */
-    public boolean seedTemplate(String userId, List<BiometricsDto> capture) {
+    public SeedOutcome seedTemplate(String userId, List<BiometricsDto> capture) {
         if (capture == null || capture.isEmpty()) {
-            return false;
+            return SeedOutcome.NO_CAPTURE;
         }
         BiometricsDto face = capture.get(0);
-        userBiometricRepository.replaceFaceTemplate(userId, CryptoUtil.base64decoder.decode(face.getBioValue()),
-                (int) face.getQualityScore());
-        return true;
+        boolean saved = userBiometricRepository.replaceSeedFaceTemplate(userId,
+                CryptoUtil.base64decoder.decode(face.getBioValue()), (int) face.getQualityScore());
+        return saved ? SeedOutcome.SAVED : SeedOutcome.ENROLLED;
     }
 
     private static BiometricRecord probe(List<BiometricsDto> capture) {

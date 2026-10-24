@@ -44,6 +44,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.never;
@@ -248,7 +249,7 @@ public class LivenessApiImplTest {
         assertEquals(Boolean.TRUE, reply.value.getAuthenticated());
         assertNull(reply.value.getErrorCode());
         assertTrue("the capture is used once", authCapture.take().isEmpty());
-        verify(audit).audit(eq(AuditEvent.CREATE_PACKET_AUTH), eq(Components.REGISTRATION), anyString());
+        verify(audit).audit(eq(AuditEvent.CREATE_PACKET_AUTH), eq(Components.REGISTRATION), contains(OPERATOR));
     }
 
     @Test
@@ -303,7 +304,7 @@ public class LivenessApiImplTest {
 
     @Test
     public void tcAnd10_faceAuth_livenessOff_failsClosed() {
-        LivenessApiImpl api = new LivenessApiImpl(globalParams, localConfig, null, false);
+        LivenessApiImpl api = new LivenessApiImpl(globalParams, localConfig, null, true);
         api.setFaceAuth(faceAuth, authCapture, audit);
         Reply<LivenessPigeon.AuthResultDto> reply = new Reply<>();
 
@@ -318,7 +319,10 @@ public class LivenessApiImplTest {
         authCapture.hold(Collections.singletonList(new BiometricsDto()));
         Reply<Void> reply = new Reply<>();
 
-        faceAuthApi().seedFaceTemplate(OPERATOR, reply);
+        LivenessApiImpl fieldBuild = api("enabled=true");
+        fieldBuild.setFaceAuth(faceAuth, authCapture, audit);
+
+        fieldBuild.seedFaceTemplate(OPERATOR, reply);
 
         assertEquals("TEST_OVERRIDES_NOT_ALLOWED", reply.code());
         verify(faceAuth, never()).seedTemplate(anyString(), anyList());
@@ -330,7 +334,7 @@ public class LivenessApiImplTest {
         api.setFaceAuth(faceAuth, authCapture, audit);
         List<BiometricsDto> face = Collections.singletonList(new BiometricsDto());
         authCapture.hold(face);
-        when(faceAuth.seedTemplate(OPERATOR, face)).thenReturn(true);
+        when(faceAuth.seedTemplate(OPERATOR, face)).thenReturn(FaceAuthService.SeedOutcome.SAVED);
         Reply<Void> reply = new Reply<>();
 
         api.seedFaceTemplate(OPERATOR, reply);
@@ -338,6 +342,46 @@ public class LivenessApiImplTest {
         assertEquals(1, reply.calls);
         assertNull(reply.error);
         assertTrue(authCapture.take().isEmpty());
+    }
+
+    @Test
+    public void tcAnd10_seed_neverReplacesAnOnboardedTemplate() {
+        LivenessApiImpl api = api("enabled=true", true);
+        api.setFaceAuth(faceAuth, authCapture, audit);
+        authCapture.hold(Collections.singletonList(new BiometricsDto()));
+        when(faceAuth.seedTemplate(eq(OPERATOR), anyList())).thenReturn(FaceAuthService.SeedOutcome.ENROLLED);
+        Reply<Void> reply = new Reply<>();
+
+        api.seedFaceTemplate(OPERATOR, reply);
+
+        assertEquals("FACE_ALREADY_ENROLLED", reply.code());
+    }
+
+    @Test
+    public void tcAnd10_faceAuth_fieldBuild_isNotOffered() {
+        when(faceAuth.isAvailable()).thenReturn(true);
+        LivenessApiImpl fieldBuild = api("enabled=true");
+        fieldBuild.setFaceAuth(faceAuth, authCapture, audit);
+        Reply<Map<String, String>> reply = new Reply<>();
+
+        fieldBuild.getLivenessConfig(PACKET_AUTH, reply);
+
+        assertEquals("false", reply.value.get("faceAuthAvailable"));
+    }
+
+    @Test
+    public void tcAnd10_faceAuth_fieldBuild_isRefused() {
+        LivenessApiImpl fieldBuild = api("enabled=true");
+        fieldBuild.setFaceAuth(faceAuth, authCapture, audit);
+        passLiveness(fieldBuild, PACKET_AUTH);
+        authCapture.hold(Collections.singletonList(new BiometricsDto()));
+        Reply<LivenessPigeon.AuthResultDto> reply = new Reply<>();
+
+        fieldBuild.authenticateWithFace(OPERATOR, PACKET_AUTH, reply);
+
+        assertEquals(Boolean.FALSE, reply.value.getAuthenticated());
+        assertEquals("FACE_AUTH_NOT_ALLOWED", reply.value.getErrorCode());
+        verify(faceAuth, never()).authenticate(anyString(), anyList());
     }
 
     @Test
@@ -520,7 +564,7 @@ public class LivenessApiImplTest {
     private final OperatorAuthCapture authCapture = new OperatorAuthCapture();
 
     private LivenessApiImpl faceAuthApi() {
-        LivenessApiImpl api = api("enabled=true");
+        LivenessApiImpl api = api("enabled=true", true);
         api.setFaceAuth(faceAuth, authCapture, audit);
         return api;
     }

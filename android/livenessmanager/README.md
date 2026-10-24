@@ -49,4 +49,6 @@ These go in `android/local.properties`, which is not in git, or are passed with 
 ## Known limitations
 
 - **Attempt counters are kept in memory** (`LivenessSessionStore`). Restarting the app gives a fresh set of attempts, which weakens the max-retries limit (LIV-011) against someone who restarts the app on purpose. The fix is to persist the counters in the app's database; this is planned, not done.
+- **Until B-07, the matched face is not bound to the live session.** Liveness runs on the phone's camera, and the face that is matched comes from a separate SBI capture. Someone could pass liveness with their own face and then show the operator's photo to the SBI capture. Face authentication (B-09) is therefore offered only in builds with the test screen (debug builds, or `mosip.liveness.testScreen`), never in a field build. Do not demo or document it as impersonation-resistant until B-07's match-based binder and `CaptureFreshness` close the gap. The authentication pass is valid for 30 s.
+- **The R2 debug seed saves rows marked `face-seed`**, replaces only those, and never runs for a user with an onboarded face template.
 - **The liveness gate is enforced natively only per capture** (#23: a fresh pass covers one face capture, for 120 s). It does not tie the capture to the live session; the capture binder (B-07) does that.
