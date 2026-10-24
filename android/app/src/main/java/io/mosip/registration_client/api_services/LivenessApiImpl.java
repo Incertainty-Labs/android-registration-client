@@ -196,7 +196,10 @@ public class LivenessApiImpl implements LivenessPigeon.LivenessApi {
         result.error(error(NOT_IMPLEMENTED, "Face authentication comes with B-09"));
     }
 
-    /** Synced config, then local preferences, then the build's overrides; each wins over the one before. */
+    /**
+     * Synced config, then local preferences, then the build's overrides, then the test screen's; each wins over
+     * the one before.
+     */
     private Map<String, String> config() {
         Map<String, Object> settings = new HashMap<>(globalParamRepository.getGlobalParamsByPattern(SYNCED_PATTERN));
         String faceRetries = globalParamRepository.getGlobalParamValue(LivenessSettings.FACE_RETRIES_KEY);

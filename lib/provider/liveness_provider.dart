@@ -29,6 +29,22 @@ class LivenessProvider with ChangeNotifier {
   /// Whether a check is open, or how the last one ended. One check runs at a time.
   LivenessStatus status = LivenessStatus.idle;
 
+  bool _disposed = false;
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
+  }
+
+  /// A native reply can arrive after the provider is gone (e.g. a reset sent as a screen closes).
+  @override
+  void notifyListeners() {
+    if (!_disposed) {
+      super.notifyListeners();
+    }
+  }
+
   static String _key(String workflow, String fieldId) => '$workflow/$fieldId';
 
   /// The field's last result, or null.
@@ -65,6 +81,15 @@ class LivenessProvider with ChangeNotifier {
       return null;
     } on PlatformException catch (e) {
       return e.code;
+    }
+  }
+
+  /// Test screen only: removes the screen's overrides, so later real checks run with the build's config.
+  Future<void> clearTestOverrides() async {
+    try {
+      await _service.setTestOverrides('');
+    } on PlatformException {
+      // A build without the test screen has none to clear
     }
   }
 

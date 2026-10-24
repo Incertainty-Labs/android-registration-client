@@ -58,42 +58,56 @@ class LivenessTestPage extends StatefulWidget {
 }
 
 class _LivenessTestPageState extends State<LivenessTestPage> {
+  /// The screen's own field id, so its attempts and results never touch a real field's.
+  static const testField = 'livenessTest';
+
   String workflow = livenessTestWorkflows.first;
   String? scenario;
-  late final TextEditingController field = TextEditingController(text: _defaultField(workflow));
+  final TextEditingController field = TextEditingController(text: testField);
   Map<String?, String?> hints = {};
+  late final LivenessProvider _provider;
+
+  /// The workflow/field pairs this screen ran, so their attempts are reset when it closes.
+  final Set<MapEntry<String, String>> _ran = {};
 
   /// Why the build refused the chosen scenario, or null.
   String? refused;
 
-  static String _defaultField(String workflow) =>
-      workflow == 'RESIDENT_REGISTRATION' ? 'individualBiometrics' : 'operatorAuth';
-
   @override
   void initState() {
     super.initState();
+    _provider = context.read<LivenessProvider>();
     _loadHints();
   }
 
+  /// Leaves nothing behind: later real checks run without the screen's overrides, and the attempts it used are
+  /// cleared.
   @override
   void dispose() {
+    _provider.clearTestOverrides();
+    for (final pair in _ran) {
+      _provider.resetAttempts(pair.key, pair.value);
+    }
     field.dispose();
     super.dispose();
   }
 
   Future<void> _loadHints() async {
-    final loaded = await context.read<LivenessProvider>().hints(workflow);
-    if (mounted) {
+    final requested = workflow;
+    final loaded = await _provider.hints(requested);
+    // A reply for a workflow that is no longer selected is out of date
+    if (mounted && requested == workflow) {
       setState(() => hints = loaded);
     }
   }
 
   Future<void> _start() async {
-    final provider = context.read<LivenessProvider>();
-    final code = await provider.useTestScenario(scenario);
+    final code = await _provider.useTestScenario(scenario);
     setState(() => refused = code);
     if (code == null) {
-      await provider.start(workflow, field.text);
+      _loadHints();
+      _ran.add(MapEntry(workflow, field.text));
+      await _provider.start(workflow, field.text);
     }
   }
 
@@ -113,10 +127,7 @@ class _LivenessTestPageState extends State<LivenessTestPage> {
           decoration: const InputDecoration(labelText: 'Workflow'),
           items: [for (final w in livenessTestWorkflows) DropdownMenuItem(value: w, child: Text(w))],
           onChanged: (value) {
-            setState(() {
-              workflow = value!;
-              field.text = _defaultField(workflow);
-            });
+            setState(() => workflow = value!);
             _loadHints();
           },
         ),

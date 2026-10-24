@@ -9,6 +9,10 @@ import 'package:registration_client/provider/liveness_provider.dart';
 class FakeLivenessService implements LivenessService {
   Map<String?, String?> config = {'enabled': 'true', 'maxAttempts': '3'};
   Object? configError;
+  int configCalls = 0;
+
+  /// When set, getLivenessConfig waits; each call adds its workflow and completer here, in order.
+  List<MapEntry<String, Completer<Map<String?, String?>>>>? heldConfigs;
   Completer<LivenessResultDto>? pending;
   int starts = 0;
   final List<String> resets = [];
@@ -18,7 +22,13 @@ class FakeLivenessService implements LivenessService {
 
   @override
   Future<Map<String?, String?>> getLivenessConfig(String workflow) async {
+    configCalls++;
     if (configError != null) throw configError!;
+    if (heldConfigs != null) {
+      final held = Completer<Map<String?, String?>>();
+      heldConfigs!.add(MapEntry(workflow, held));
+      return held.future;
+    }
     return config;
   }
 

@@ -42,5 +42,6 @@ The face test needs a consented photo at `src/androidTest/assets/consented/b-sel
 These go in `android/local.properties`, which is not in git, or are passed with `-P`.
 
 - `mosip.liveness.overrides`: liveness config pairs separated by `;`, for example `enabled=true;stub.force=PAD`. A key that doesn't start with `mosip.` gets the `mosip.registration.face.liveness.` prefix. They are applied after the synced config and the local preferences, so they win. Release builds honour them too, so a demo APK can turn liveness on while the server leaves it off. The app logs a warning when any are set.
+- `mosip.liveness.testScreen=true`: gives a release build the liveness test screen (B-21). Debug builds always have it. It is reached from the login page, before any login, and lets anyone pick the stub scenario (for example `PAD`), which is fine on the demo phone. The screen clears its overrides and resets its attempts when it closes.
 
 **Never set these flags for a build used in the field.**
