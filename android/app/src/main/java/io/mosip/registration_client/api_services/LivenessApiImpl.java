@@ -12,6 +12,7 @@ import java.util.Map;
 import javax.inject.Singleton;
 
 import io.mosip.registration.clientmanager.repository.GlobalParamRepository;
+import io.mosip.registration.clientmanager.spi.LocalConfigService;
 import io.mosip.registration.liveness.api.Decision;
 import io.mosip.registration.liveness.api.LivenessPolicy;
 import io.mosip.registration.liveness.api.LivenessResult;
@@ -39,10 +40,11 @@ public class LivenessApiImpl implements LivenessPigeon.LivenessApi {
     static final String NOT_IMPLEMENTED = "NOT_IMPLEMENTED";
 
     private static final String TAG = LivenessApiImpl.class.getSimpleName();
-    private static final String SYNCED_PATTERN = "mosip.registration.%";
+    private static final String SYNCED_PATTERN = LivenessConfigLoader.PREFIX + "%";
     private static final String DIAGNOSTICS_KEY = LivenessConfigLoader.PREFIX + "diagnostics.enabled";
 
     private final GlobalParamRepository globalParamRepository;
+    private final LocalConfigService localConfigService;
     private final String overrides;
     private final LivenessSessionStore store = LivenessSessionStore.shared();
     private Activity activity;
@@ -52,12 +54,19 @@ public class LivenessApiImpl implements LivenessPigeon.LivenessApi {
 
     /**
      * @param globalParamRepository the synced config
-     * @param overrides             the build's liveness overrides ({@code BuildConfig.LIVENESS_OVERRIDES}), or
-     *                              null
+     * @param localConfigService    the operator's local preferences (Global Config Settings), which win over the
+     *                              synced config
+     * @param overrides             the build's liveness overrides ({@code BuildConfig.LIVENESS_OVERRIDES}), which
+     *                              win over both; null for none
      */
-    public LivenessApiImpl(GlobalParamRepository globalParamRepository, String overrides) {
+    public LivenessApiImpl(GlobalParamRepository globalParamRepository, LocalConfigService localConfigService,
+                           String overrides) {
         this.globalParamRepository = globalParamRepository;
+        this.localConfigService = localConfigService;
         this.overrides = overrides;
+        if (overrides != null && !overrides.trim().isEmpty()) {
+            Log.w(TAG, "Liveness config overrides are set in this build: " + overrides);
+        }
     }
 
     /** @param activity starts {@code LivenessActivity} and passes its result to {@link #onActivityResult} */
@@ -85,9 +94,15 @@ public class LivenessApiImpl implements LivenessPigeon.LivenessApi {
             result.error(error(LIVENESS_DISABLED, "Liveness is off for " + workflow));
             return;
         }
-        int attempt = store.begin(workflow, fieldId, policy, clientRetryLimit(config));
         if (activity == null) {
             result.error(error(LIVENESS_START_FAILED, "No activity to open the liveness screen"));
+            return;
+        }
+        int attempt = store.begin(workflow, fieldId, policy, clientRetryLimit(config));
+        LivenessResultSummary limit = store.limitReached(workflow, fieldId);
+        if (limit != null) {
+            // Attempts used up: the limit guards against repeated attacks, so no new session (LIV-011)
+            result.success(toDto(limit));
             return;
         }
         pending = new Pending(workflow, fieldId, "true".equalsIgnoreCase(config.get(DIAGNOSTICS_KEY)), result);
@@ -148,6 +163,11 @@ public class LivenessApiImpl implements LivenessPigeon.LivenessApi {
     @Override
     public void resetAttempts(@NonNull String workflow, @NonNull String fieldId,
                               @NonNull LivenessPigeon.Result<Void> result) {
+        if (pending != null) {
+            // The open check still needs its attempt to complete
+            result.error(error(LIVENESS_IN_PROGRESS, "A liveness check is open"));
+            return;
+        }
         store.reset(workflow, fieldId);
         result.success(null);
     }
@@ -158,8 +178,18 @@ public class LivenessApiImpl implements LivenessPigeon.LivenessApi {
         result.error(error(NOT_IMPLEMENTED, "Face authentication comes with B-09"));
     }
 
+    /** Synced config, then local preferences, then the build's overrides; each wins over the one before. */
     private Map<String, String> config() {
-        return LivenessSettings.merge(globalParamRepository.getGlobalParamsByPattern(SYNCED_PATTERN), overrides);
+        Map<String, Object> settings = new HashMap<>(globalParamRepository.getGlobalParamsByPattern(SYNCED_PATTERN));
+        String faceRetries = globalParamRepository.getGlobalParamValue(LivenessSettings.FACE_RETRIES_KEY);
+        if (faceRetries != null) {
+            settings.put(LivenessSettings.FACE_RETRIES_KEY, faceRetries);
+        }
+        Map<String, String> local = localConfigService.getLocalConfigurations();
+        if (local != null) {
+            settings.putAll(local);
+        }
+        return LivenessSettings.merge(settings, overrides);
     }
 
     private static int clientRetryLimit(Map<String, String> config) {

@@ -18,6 +18,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 import io.mosip.registration.clientmanager.repository.GlobalParamRepository;
+import io.mosip.registration.clientmanager.spi.LocalConfigService;
 import io.mosip.registration.liveness.api.ChallengeOutcome;
 import io.mosip.registration.liveness.api.ChallengeProgress;
 import io.mosip.registration.liveness.api.ChallengeType;
@@ -50,11 +51,14 @@ public class LivenessApiImplTest {
 
     private final GlobalParamRepository globalParams = mock(GlobalParamRepository.class);
     private final Map<String, Object> synced = new HashMap<>();
+    private final LocalConfigService localConfig = mock(LocalConfigService.class);
+    private final Map<String, String> localPreferences = new HashMap<>();
     private Activity activity;
 
     @Before
     public void setUp() {
-        when(globalParams.getGlobalParamsByPattern(anyString())).thenReturn(synced);
+        when(globalParams.getGlobalParamsByPattern(PREFIX + "%")).thenReturn(synced);
+        when(localConfig.getLocalConfigurations()).thenReturn(localPreferences);
         activity = Robolectric.buildActivity(Activity.class).setup().get();
         LivenessSessionStore.shared().reset(WORKFLOW, FACE);
     }
@@ -173,7 +177,7 @@ public class LivenessApiImplTest {
 
     @Test
     public void tcAnd02_noActivity_failsInsteadOfWaitingForever() {
-        LivenessApiImpl api = new LivenessApiImpl(globalParams, "enabled=true");
+        LivenessApiImpl api = new LivenessApiImpl(globalParams, localConfig, "enabled=true");
         Reply<LivenessPigeon.LivenessResultDto> reply = new Reply<>();
 
         api.startLiveness(WORKFLOW, FACE, reply);
@@ -184,7 +188,7 @@ public class LivenessApiImplTest {
     @Test
     public void tcAnd02_config_givesTheUiItsHints() {
         synced.put(PREFIX + "max.retries", "3");
-        synced.put("mosip.registration.num_of_face_retries", "2");
+        when(globalParams.getGlobalParamValue("mosip.registration.num_of_face_retries")).thenReturn("2");
         Reply<Map<String, String>> reply = new Reply<>();
 
         api("enabled=true").getLivenessConfig(WORKFLOW, reply);
@@ -201,7 +205,8 @@ public class LivenessApiImplTest {
     public void tcAnd02_resetAttempts_startsTheFieldAgain() {
         LivenessApiImpl api = api("enabled=true");
         api.startLiveness(WORKFLOW, FACE, new Reply<>());
-        LivenessSessionStore.shared().complete(WORKFLOW, FACE, failedChallenge(), false);
+        api.onActivityResult(LivenessContract.REQUEST_CODE, Activity.RESULT_OK, LivenessContract.resultIntent(
+                LivenessSessionStore.shared().complete(WORKFLOW, FACE, failedChallenge(), false)));
         Reply<Void> reply = new Reply<>();
 
         api.resetAttempts(WORKFLOW, FACE, reply);
@@ -219,8 +224,115 @@ public class LivenessApiImplTest {
         assertEquals("NOT_IMPLEMENTED", reply.code());
     }
 
+    @Test
+    public void tcAnd02_attemptsUsedUp_repliesMaxRetriesWithoutOpeningTheScreen() {
+        LivenessApiImpl api = api("enabled=true;max.retries=1");
+        api.startLiveness(WORKFLOW, FACE, new Reply<>());
+        Shadows.shadowOf(activity).getNextStartedActivityForResult();
+        api.onActivityResult(LivenessContract.REQUEST_CODE, Activity.RESULT_OK, LivenessContract.resultIntent(
+                LivenessSessionStore.shared().complete(WORKFLOW, FACE, failedChallenge(), false)));
+        Reply<LivenessPigeon.LivenessResultDto> reply = new Reply<>();
+
+        api.startLiveness(WORKFLOW, FACE, reply);
+
+        assertNull(Shadows.shadowOf(activity).getNextStartedActivityForResult());
+        assertEquals("FAILED", reply.value.getFinalState());
+        assertEquals("LIV-011", reply.value.getErrorCode());
+        assertEquals("liveness.fail.max_retries", reply.value.getMessageKey());
+        assertEquals(Boolean.FALSE, reply.value.getRetryAllowed());
+    }
+
+    @Test
+    public void tcAnd17_localPreferences_winOverSyncedValues() {
+        synced.put(PREFIX + "enabled", "false");
+        localPreferences.put(PREFIX + "enabled", "true");
+        localPreferences.put(PREFIX + "mode", "PASSIVE");
+        Reply<Map<String, String>> reply = new Reply<>();
+
+        api(null).getLivenessConfig(WORKFLOW, reply);
+
+        assertEquals("true", reply.value.get("enabled"));
+        assertEquals("PASSIVE", reply.value.get("mode"));
+    }
+
+    @Test
+    public void tcAnd02_buildOverrides_winOverLocalPreferences() {
+        localPreferences.put(PREFIX + "mode", "PASSIVE");
+        Reply<Map<String, String>> reply = new Reply<>();
+
+        api("enabled=true;mode=ACTIVE").getLivenessConfig(WORKFLOW, reply);
+
+        assertEquals("ACTIVE", reply.value.get("mode"));
+    }
+
+    @Test
+    public void tcAnd02_resetWhileACheckIsOpen_isRefusedAndTheCheckStillCompletes() {
+        LivenessApiImpl api = api("enabled=true");
+        Reply<LivenessPigeon.LivenessResultDto> check = new Reply<>();
+        api.startLiveness(WORKFLOW, FACE, check);
+        Reply<Void> reset = new Reply<>();
+
+        api.resetAttempts(WORKFLOW, FACE, reset);
+        api.onActivityResult(LivenessContract.REQUEST_CODE, Activity.RESULT_CANCELED, null);
+
+        assertEquals("LIVENESS_IN_PROGRESS", reset.code());
+        assertEquals(1, check.calls);
+        assertEquals("CANCELLED", check.value.getFinalState());
+    }
+
+    @Test
+    public void tcAnd02_passWithoutDiagnostics_mapsWithoutAScore() {
+        LivenessPigeon.LivenessResultDto dto = mapped(passed(), false);
+
+        assertEquals("PASSED", dto.getFinalState());
+        assertEquals("LIVE", dto.getDecision());
+        assertNull(dto.getErrorCode());
+        assertEquals("liveness.feedback.success", dto.getMessageKey());
+        assertNull(dto.getPassiveScore());
+    }
+
+    @Test
+    public void tcAnd02_passWithDiagnostics_mapsTheScore() {
+        assertEquals(0.93, mapped(passed(), true).getPassiveScore(), 1e-9);
+    }
+
+    @Test
+    public void tcAnd02_attack_mapsToTheGenericFailure() {
+        LivenessPigeon.LivenessResultDto dto = mapped(LivenessResult.builder(SessionState.FAILED,
+                Decision.ATTACK_SUSPECTED).errorCode(LivenessErrorCode.PAD_FAILED).build(), false);
+
+        assertEquals("ATTACK_SUSPECTED", dto.getDecision());
+        assertEquals("LIV-008", dto.getErrorCode());
+        assertEquals("liveness.fail.generic", dto.getMessageKey());
+    }
+
+    @Test
+    public void tcAnd02_engineError_mapsToTheEngineMessage() {
+        LivenessPigeon.LivenessResultDto dto = mapped(LivenessResult.builder(SessionState.ERROR,
+                Decision.INCONCLUSIVE).errorCode(LivenessErrorCode.ENGINE_ERROR).build(), false);
+
+        assertEquals("ERROR", dto.getFinalState());
+        assertEquals("LIV-013", dto.getErrorCode());
+        assertEquals("liveness.error.engine", dto.getMessageKey());
+        assertEquals(Boolean.TRUE, dto.getRetryAllowed());
+    }
+
+    /** Runs one check whose activity returns [result], and gives the DTO Dart receives. */
+    private LivenessPigeon.LivenessResultDto mapped(LivenessResult result, boolean diagnostics) {
+        LivenessApiImpl api = api("enabled=true");
+        Reply<LivenessPigeon.LivenessResultDto> reply = new Reply<>();
+        api.startLiveness(WORKFLOW, FACE, reply);
+        api.onActivityResult(LivenessContract.REQUEST_CODE, Activity.RESULT_OK, LivenessContract.resultIntent(
+                LivenessSessionStore.shared().complete(WORKFLOW, FACE, result, diagnostics)));
+        return reply.value;
+    }
+
+    private static LivenessResult passed() {
+        return LivenessResult.builder(SessionState.PASSED, Decision.LIVE).passiveScore(0.93).build();
+    }
+
     private LivenessApiImpl api(String overrides) {
-        LivenessApiImpl api = new LivenessApiImpl(globalParams, overrides);
+        LivenessApiImpl api = new LivenessApiImpl(globalParams, localConfig, overrides);
         api.setCallbackActivity(activity);
         return api;
     }

@@ -272,8 +272,9 @@ public class HostApiModule {
 
     @Provides
     @Singleton
-    LivenessApiImpl getLivenessApiImpl(GlobalParamRepository globalParamRepository) {
-        return new LivenessApiImpl(globalParamRepository, BuildConfig.LIVENESS_OVERRIDES);
+    LivenessApiImpl getLivenessApiImpl(GlobalParamRepository globalParamRepository,
+                                       LocalConfigService localConfigService) {
+        return new LivenessApiImpl(globalParamRepository, localConfigService, BuildConfig.LIVENESS_OVERRIDES);
     }
 
     @Provides
