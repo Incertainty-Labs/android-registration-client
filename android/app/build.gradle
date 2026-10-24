@@ -78,6 +78,7 @@ android {
         buildConfigField("String", "HEALTH_CHECK_PATH", rootProject.ext.serverHealthCheckPath)
         buildConfigField("String", "ACTUATOR_INFO_PATH", rootProject.ext.serverActuatorInfoPath)
         buildConfigField("String", "LIVENESS_OVERRIDES", rootProject.ext.livenessOverrides)
+        buildConfigField("boolean", "LIVENESS_TEST_SCREEN", rootProject.ext.livenessTestScreenEnabled)
     }
 
     signingConfigs {

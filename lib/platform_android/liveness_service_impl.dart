@@ -13,6 +13,9 @@ class LivenessServiceImpl implements LivenessService {
   @override
   Future<void> resetAttempts(String workflow, String fieldId) =>
       LivenessApi().resetAttempts(workflow, fieldId);
+
+  @override
+  Future<void> setTestOverrides(String overrides) => LivenessApi().setTestOverrides(overrides);
 }
 
 LivenessService getLivenessServiceImpl() => LivenessServiceImpl();

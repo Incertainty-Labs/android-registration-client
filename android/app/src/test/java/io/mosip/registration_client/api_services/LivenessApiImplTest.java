@@ -177,7 +177,7 @@ public class LivenessApiImplTest {
 
     @Test
     public void tcAnd02_noActivity_failsInsteadOfWaitingForever() {
-        LivenessApiImpl api = new LivenessApiImpl(globalParams, localConfig, "enabled=true");
+        LivenessApiImpl api = new LivenessApiImpl(globalParams, localConfig, "enabled=true", false);
         Reply<LivenessPigeon.LivenessResultDto> reply = new Reply<>();
 
         api.startLiveness(WORKFLOW, FACE, reply);
@@ -332,9 +332,62 @@ public class LivenessApiImplTest {
     }
 
     private LivenessApiImpl api(String overrides) {
-        LivenessApiImpl api = new LivenessApiImpl(globalParams, localConfig, overrides);
+        return api(overrides, false);
+    }
+
+    private LivenessApiImpl api(String overrides, boolean testScreen) {
+        LivenessApiImpl api = new LivenessApiImpl(globalParams, localConfig, overrides, testScreen);
         api.setCallbackActivity(activity);
         return api;
+    }
+
+    @Test
+    public void tcAnd_b21_testOverrides_areRefusedWithoutTheTestScreen() {
+        Reply<Void> reply = new Reply<>();
+
+        api("enabled=true").setTestOverrides("stub.force=PAD", reply);
+
+        assertEquals("TEST_OVERRIDES_NOT_ALLOWED", reply.code());
+    }
+
+    @Test
+    public void tcAnd_b21_testOverrides_reachTheNextSession() {
+        LivenessApiImpl api = api("enabled=true;stub.force=PASS_ACTIVE", true);
+        Reply<Void> set = new Reply<>();
+
+        api.setTestOverrides("stub.force=PAD", set);
+        api.startLiveness(WORKFLOW, FACE, new Reply<>());
+
+        assertEquals(1, set.calls);
+        LivenessContract.Request request = LivenessContract.parseRequest(
+                Shadows.shadowOf(activity).getNextStartedActivityForResult().intent);
+        assertEquals("PAD", request.config().get(PREFIX + "stub.force"));
+        assertEquals("true", request.config().get(PREFIX + "enabled"));
+    }
+
+    @Test
+    public void tcAnd_b21_emptyTestOverrides_clearThem() {
+        LivenessApiImpl api = api("enabled=true", true);
+        api.setTestOverrides("stub.force=PAD", new Reply<>());
+
+        api.setTestOverrides("", new Reply<>());
+        api.startLiveness(WORKFLOW, FACE, new Reply<>());
+
+        LivenessContract.Request request = LivenessContract.parseRequest(
+                Shadows.shadowOf(activity).getNextStartedActivityForResult().intent);
+        assertNull(request.config().get(PREFIX + "stub.force"));
+    }
+
+    @Test
+    public void tcAnd_b21_config_saysWhetherTheTestScreenIsAllowed() {
+        Reply<Map<String, String>> off = new Reply<>();
+        Reply<Map<String, String>> on = new Reply<>();
+
+        api("enabled=true").getLivenessConfig(WORKFLOW, off);
+        api("enabled=true", true).getLivenessConfig(WORKFLOW, on);
+
+        assertEquals("false", off.value.get("testScreen"));
+        assertEquals("true", on.value.get("testScreen"));
     }
 
     private static LivenessResult failedChallenge() {

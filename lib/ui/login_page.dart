@@ -28,6 +28,7 @@ import 'package:registration_client/ui/machine_keys.dart';
 import 'package:registration_client/provider/connectivity_provider.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'package:registration_client/provider/global_provider.dart';
+import 'package:registration_client/ui/liveness_test/liveness_test_page.dart';
 import 'package:registration_client/utils/app_config.dart';
 import 'package:registration_client/utils/responsive.dart';
 import 'package:registration_client/ui/widgets/password_component.dart';
@@ -568,6 +569,8 @@ class _LoginPageState extends State<LoginPage> with WidgetsBindingObserver {
                     }
                   })
               : const SizedBox(),
+          // Developer liveness test (B-21); shown only in builds that have the test screen
+          const LivenessTestEntry(),
         ],
       ),
     );

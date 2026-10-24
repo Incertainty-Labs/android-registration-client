@@ -9,14 +9,26 @@ import 'package:registration_client/provider/liveness_provider.dart';
 class FakeLivenessService implements LivenessService {
   Map<String?, String?> config = {'enabled': 'true', 'maxAttempts': '3'};
   Object? configError;
+  int configCalls = 0;
+
+  /// When set, getLivenessConfig waits; each call adds its workflow and completer here, in order.
+  List<MapEntry<String, Completer<Map<String?, String?>>>>? heldConfigs;
   Completer<LivenessResultDto>? pending;
   int starts = 0;
   final List<String> resets = [];
   Object? resetError;
+  String? testOverrides;
+  Object? testOverridesError;
 
   @override
   Future<Map<String?, String?>> getLivenessConfig(String workflow) async {
+    configCalls++;
     if (configError != null) throw configError!;
+    if (heldConfigs != null) {
+      final held = Completer<Map<String?, String?>>();
+      heldConfigs!.add(MapEntry(workflow, held));
+      return held.future;
+    }
     return config;
   }
 
@@ -31,6 +43,12 @@ class FakeLivenessService implements LivenessService {
   Future<void> resetAttempts(String workflow, String fieldId) async {
     if (resetError != null) throw resetError!;
     resets.add('$workflow/$fieldId');
+  }
+
+  @override
+  Future<void> setTestOverrides(String overrides) async {
+    if (testOverridesError != null) throw testOverridesError!;
+    testOverrides = overrides;
   }
 }
 
@@ -140,6 +158,34 @@ void main() {
 
     service.pending!.complete(result('PASSED', 'LIVE'));
     await open;
+  });
+
+  test('B-21 the test screen is allowed only when the build says so', () async {
+    expect(await provider.testScreenAllowed(), isFalse);
+
+    service.config = {'enabled': 'true', 'testScreen': 'true'};
+    expect(await provider.testScreenAllowed(), isTrue);
+  });
+
+  test('B-21 the test screen turns liveness on and plays the chosen scenario', () async {
+    expect(await provider.useTestScenario('PAD'), isNull);
+    expect(service.testOverrides, 'enabled=true;stub.force=PAD');
+
+    await provider.useTestScenario(null);
+    expect(service.testOverrides, 'enabled=true');
+  });
+
+  test('B-21 a refused scenario is reported, not thrown', () async {
+    service.testOverridesError = PlatformException(code: 'TEST_OVERRIDES_NOT_ALLOWED');
+
+    expect(await provider.useTestScenario('PAD'), 'TEST_OVERRIDES_NOT_ALLOWED');
+  });
+
+  test('B-21 hints come from the config, empty when it cannot be read', () async {
+    expect((await provider.hints('RESIDENT_REGISTRATION'))['maxAttempts'], '3');
+
+    service.configError = PlatformException(code: 'LIVENESS_BAD_REQUEST');
+    expect(await provider.hints('RESIDENT_REGISTRATION'), isEmpty);
   });
 
   test('TC-AND-02 resetAttempts refused natively reports false', () async {
