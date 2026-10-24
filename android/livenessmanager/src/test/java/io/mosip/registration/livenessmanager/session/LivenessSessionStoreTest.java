@@ -165,6 +165,24 @@ public class LivenessSessionStoreTest {
         assertTrue(store.consumePass(WORKFLOW, FACE, 120_000L));
     }
 
+    @Test
+    public void tcAnd18_store_keepsThePolicyTheFieldRanUnder() {
+        LivenessPolicy policy = policy(3);
+        store.begin(WORKFLOW, FACE, policy, 0);
+
+        assertSame(policy, store.lastPolicy(WORKFLOW, FACE));
+        assertNull(store.lastPolicy("OPERATOR_AUTH", "operatorAuth"));
+    }
+
+    @Test
+    public void tcAnd18_reset_forgetsThePolicy() {
+        store.begin(WORKFLOW, FACE, policy(3), 0);
+
+        store.reset(WORKFLOW, FACE);
+
+        assertNull(store.lastPolicy(WORKFLOW, FACE));
+    }
+
     @Test(expected = IllegalStateException.class)
     public void tcAnd_completeWithoutBegin_isRejected() {
         store.complete(WORKFLOW, FACE, passed(), false);

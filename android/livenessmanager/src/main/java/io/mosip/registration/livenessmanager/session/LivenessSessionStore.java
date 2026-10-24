@@ -22,6 +22,8 @@ public final class LivenessSessionStore {
 
     private final Map<String, AttemptTracker> trackers = new HashMap<>();
     private final Map<String, LivenessResult> results = new HashMap<>();
+    /** The policy each field last began under, for the packet evidence (LIVENESS_THRESHOLD, LIVENESS_MODE). */
+    private final Map<String, LivenessPolicy> policies = new HashMap<>();
     /** When each field's last check passed, until a capture uses the pass. */
     private final Map<String, Long> passedAtMs = new HashMap<>();
     private final LongSupplier clockMs;
@@ -58,6 +60,9 @@ public final class LivenessSessionStore {
         if (tracker == null) {
             tracker = new AttemptTracker(policy, clientRetryLimit);
             trackers.put(key, tracker);
+        }
+        if (policy != null) {
+            policies.put(key, policy);
         }
         return tracker.current();
     }
@@ -132,6 +137,15 @@ public final class LivenessSessionStore {
     }
 
     /**
+     * @param workflow the {@code Workflow} name
+     * @param fieldId  the field
+     * @return the policy the field last began under, or null
+     */
+    public synchronized LivenessPolicy lastPolicy(String workflow, String fieldId) {
+        return policies.get(key(workflow, fieldId));
+    }
+
+    /**
      * Forgets the field's attempts and result, for example for a new registration.
      *
      * @param workflow the {@code Workflow} name
@@ -141,6 +155,7 @@ public final class LivenessSessionStore {
         String key = key(workflow, fieldId);
         trackers.remove(key);
         results.remove(key);
+        policies.remove(key);
         passedAtMs.remove(key);
     }
 
