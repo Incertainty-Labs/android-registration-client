@@ -122,6 +122,56 @@ void main() {
     expect(find.text('Face verification is unavailable. Please contact support.'), findsOneWidget);
   });
 
+  testWidgets('TC-AND-09 the onboarding card shows the onboarding result only', (tester) async {
+    await tester.pumpWidget(ChangeNotifierProvider.value(
+      value: provider,
+      child: MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        locale: const Locale('en'),
+        home: const Scaffold(
+            body: LivenessResultCard(fieldId: 'operatorBiometrics', workflow: 'OPERATOR_ONBOARDING')),
+      ),
+    ));
+    final resident = provider.start(workflow, 'operatorBiometrics');
+    service.pending!.complete(LivenessResultDto(finalState: 'PASSED', decision: 'LIVE'));
+    await resident;
+    await tester.pumpAndSettle();
+    expect(find.text('Liveness: verified'), findsNothing);
+
+    final onboarding = provider.start('OPERATOR_ONBOARDING', 'operatorBiometrics');
+    service.pending!.complete(LivenessResultDto(finalState: 'PASSED', decision: 'LIVE'));
+    await onboarding;
+    await tester.pumpAndSettle();
+    expect(find.text('Liveness: verified'), findsOneWidget);
+  });
+
+  testWidgets('TC-AND-07 the S12 hint reads the config once, not on every rebuild', (tester) async {
+    service.config = {'enabled': 'true', 'onMaxRetries': 'EXCEPTION_FLOW'};
+    await pumpCard(tester);
+    await finish(tester, LivenessResultDto(finalState: 'FAILED', decision: 'INCONCLUSIVE', errorCode: 'LIV-011',
+        messageKey: 'liveness.fail.max_retries', attempt: 3, maxAttempts: 3, retryAllowed: false));
+    final calls = service.configCalls;
+
+    for (var i = 0; i < 3; i++) {
+      final other = provider.start(workflow, 'introducerBiometrics');
+      service.pending!.complete(LivenessResultDto(finalState: 'CANCELLED', decision: 'INCONCLUSIVE'));
+      await other;
+      await tester.pumpAndSettle();
+    }
+
+    expect(find.text('Mark face exception'), findsOneWidget);
+    expect(service.configCalls, calls);
+  });
+
+  testWidgets('TC-AND-06 a check already open is not shown as an engine error', (tester) async {
+    await pumpCard(tester);
+
+    await finish(tester, PlatformException(code: 'LIVENESS_IN_PROGRESS'));
+
+    expect(find.byType(Text), findsNothing);
+  });
+
   testWidgets('TC-AND-05 liveness off and a cancel show nothing', (tester) async {
     await pumpCard(tester);
 

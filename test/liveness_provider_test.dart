@@ -15,6 +15,7 @@ class FakeLivenessService implements LivenessService {
   List<MapEntry<String, Completer<Map<String?, String?>>>>? heldConfigs;
   Completer<LivenessResultDto>? pending;
   int starts = 0;
+  String? lastWorkflow;
   final List<String> resets = [];
   Object? resetError;
   String? testOverrides;
@@ -35,6 +36,7 @@ class FakeLivenessService implements LivenessService {
   @override
   Future<LivenessResultDto> startLiveness(String workflow, String fieldId) {
     starts++;
+    lastWorkflow = workflow;
     pending = Completer<LivenessResultDto>();
     return pending!.future;
   }

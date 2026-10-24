@@ -80,6 +80,20 @@ void main() {
     expect(service.starts, 0);
   });
 
+  test('TC-AND-09 onboarding checks the operator under its own workflow', () async {
+    final provider = LivenessProvider(service: service);
+    final onboarding = LivenessGate(provider, workflow: 'OPERATOR_ONBOARDING');
+
+    final captured = onboarding.capture('operatorBiometrics', 'Face', sbi);
+    await Future<void>.delayed(Duration.zero);
+    service.pending!.complete(LivenessResultDto(finalState: 'PASSED', decision: 'LIVE'));
+
+    expect(await captured, isTrue);
+    expect(service.lastWorkflow, 'OPERATOR_ONBOARDING');
+    expect(provider.passedFor('OPERATOR_ONBOARDING', 'operatorBiometrics'), isTrue);
+    expect(provider.passedFor('RESIDENT_REGISTRATION', 'operatorBiometrics'), isFalse);
+  });
+
   test('TC-AND-05 an SBI error still reaches the caller', () async {
     Future<void> failingSbi() async => throw PlatformException(code: 'REG-SBI-104');
     final captured = gate.capture(face, 'Face', failingSbi);

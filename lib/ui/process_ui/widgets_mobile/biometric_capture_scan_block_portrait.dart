@@ -602,7 +602,7 @@ class _BiometricCaptureScanBlockPortraitState
           onPressed: biometricAttributeData.title == LivenessGate.faceModality &&
                   context
                       .watch<LivenessProvider>()
-                      .blockedFor(LivenessGate.workflow, widget.field.id!)
+                      .blockedFor(LivenessGate.residentWorkflow, widget.field.id!)
               ? null
               : () async {
             if (biometricAttributeData.exceptions.contains(false)) {

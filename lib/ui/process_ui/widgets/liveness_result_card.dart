@@ -9,34 +9,36 @@ import 'package:registration_client/utils/liveness_text.dart';
 /// failure with the attempts left, S12 attempts used up. Never shows codes, scores or the decision, so an attack
 /// reads like any other failure. Empty before a check, after a cancel, or when liveness is off.
 class LivenessResultCard extends StatelessWidget {
-  const LivenessResultCard({super.key, required this.fieldId});
+  const LivenessResultCard({super.key, required this.fieldId, this.workflow = LivenessGate.residentWorkflow});
 
   final String fieldId;
 
-  static const _workflow = LivenessGate.workflow;
+  /// The liveness workflow the field was checked under.
+  final String workflow;
 
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<LivenessProvider>();
     final l10n = AppLocalizations.of(context)!;
-    if (provider.isChecking(_workflow, fieldId)) {
+    if (provider.isChecking(workflow, fieldId)) {
       return _line(context, Icons.hourglass_top, livenessText(l10n, 'liveness.status.checking'), null);
     }
-    final error = provider.errorFor(_workflow, fieldId);
-    if (error != null && error != 'LIVENESS_DISABLED') {
+    // Only a check that could not start is an error to show; a check already open or liveness off is not
+    final error = provider.errorFor(workflow, fieldId);
+    if (error == 'LIVENESS_START_FAILED' || error == 'LIVENESS_BAD_REQUEST') {
       return _line(context, Icons.error_outline, livenessText(l10n, 'liveness.error.engine'), Colors.red.shade700);
     }
-    final result = provider.resultFor(_workflow, fieldId);
-    if (result == null || result.finalState == 'CANCELLED') {
+    final result = provider.resultFor(workflow, fieldId);
+    if (error != null || result == null || result.finalState == 'CANCELLED') {
       return const SizedBox.shrink();
     }
-    if (provider.passedFor(_workflow, fieldId)) {
+    if (provider.passedFor(workflow, fieldId)) {
       return _line(context, Icons.verified_user, livenessText(l10n, 'liveness.badge.verified'), Colors.green.shade700);
     }
     final message = livenessText(l10n, result.messageKey ?? 'liveness.fail.generic');
     final children = <Widget>[_line(context, Icons.error_outline, message, Colors.red.shade700)];
-    if (provider.blockedFor(_workflow, fieldId)) {
-      children.add(const _ExceptionHint(workflow: _workflow));
+    if (provider.blockedFor(workflow, fieldId)) {
+      children.add(_ExceptionHint(workflow: workflow));
     } else if (result.retryAllowed == true && result.attempt != null && result.maxAttempts != null) {
       children.add(Text(livenessText(l10n, 'liveness.retry.available', [result.attempt!, result.maxAttempts!])));
     }
@@ -58,16 +60,24 @@ class LivenessResultCard extends StatelessWidget {
 }
 
 /// S12 with `on.max.retries=EXCEPTION_FLOW`: points the operator to the face exception. BLOCK, and
-/// SUPERVISOR_OVERRIDE until the supervisor override exists (B-10), show nothing more.
-class _ExceptionHint extends StatelessWidget {
+/// SUPERVISOR_OVERRIDE until the supervisor override exists (B-10), show nothing more. Reads the config once, not
+/// on every rebuild.
+class _ExceptionHint extends StatefulWidget {
   const _ExceptionHint({required this.workflow});
 
   final String workflow;
 
   @override
+  State<_ExceptionHint> createState() => _ExceptionHintState();
+}
+
+class _ExceptionHintState extends State<_ExceptionHint> {
+  late final Future<Map<String?, String?>> _hints = context.read<LivenessProvider>().hints(widget.workflow);
+
+  @override
   Widget build(BuildContext context) {
     return FutureBuilder<Map<String?, String?>>(
-      future: context.read<LivenessProvider>().hints(workflow),
+      future: _hints,
       builder: (context, hints) {
         if (hints.data?['onMaxRetries'] != 'EXCEPTION_FLOW') {
           return const SizedBox.shrink();

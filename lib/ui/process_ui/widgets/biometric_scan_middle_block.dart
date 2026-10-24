@@ -314,7 +314,7 @@ class _BiometricScanMiddleBlockState extends State<BiometricScanMiddleBlock> {
             onPressed: widget.parameterTitle == LivenessGate.faceModality &&
                     context
                         .watch<LivenessProvider>()
-                        .blockedFor(LivenessGate.workflow, widget.field.id!)
+                        .blockedFor(LivenessGate.residentWorkflow, widget.field.id!)
                 ? null
                 : () async {
               if (widget.biometricAttributeData.exceptions.contains(false)) {
