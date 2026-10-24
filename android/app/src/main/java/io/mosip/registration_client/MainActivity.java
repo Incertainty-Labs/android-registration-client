@@ -72,6 +72,7 @@ import io.mosip.registration_client.api_services.AuditDetailsApi;
 import io.mosip.registration_client.api_services.AuthenticationApi;
 import io.mosip.registration_client.api_services.BiometricsDetailsApi;
 import io.mosip.registration_client.api_services.LivenessApiImpl;
+import io.mosip.registration_client.api_services.OperatorAuthCapture;
 import io.mosip.registration_client.api_services.CommonDetailsApi;
 import io.mosip.registration_client.api_services.DashBoardDetailsApi;
 import io.mosip.registration_client.api_services.DemographicsDetailsApi;
@@ -167,6 +168,9 @@ public class MainActivity extends FlutterActivity {
 
     @Inject
     LivenessApiImpl livenessApi;
+
+    @Inject
+    OperatorAuthCapture operatorAuthCapture;
 
     @Inject
     PacketAuthenticationApi packetAuthenticationApi;
@@ -410,6 +414,7 @@ public class MainActivity extends FlutterActivity {
         LivenessPigeon.LivenessApi.setup(flutterEngine.getDartExecutor().getBinaryMessenger(), livenessApi);
         livenessApi.setCallbackActivity(this);
         biometricsDetailsApi.setFaceCaptureGuard(livenessApi::faceCaptureAllowed);
+        biometricsDetailsApi.setOperatorAuthCapture(operatorAuthCapture);
         RegistrationDataPigeon.RegistrationDataApi.setup(flutterEngine.getDartExecutor().getBinaryMessenger(), registrationApi);
         PacketAuthPigeon.PacketAuthApi.setup(flutterEngine.getDartExecutor().getBinaryMessenger(), packetAuthenticationApi);
         packetAuthenticationApi.setCallbackActivity(this);
