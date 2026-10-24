@@ -143,7 +143,12 @@ public class LivenessApiImpl implements LivenessPigeon.LivenessApi {
             result.success(toDto(limit));
             return;
         }
-        pending = new Pending(workflow, fieldId, "true".equalsIgnoreCase(config.get(DIAGNOSTICS_KEY)), result);
+        boolean diagnostics = "true".equalsIgnoreCase(config.get(DIAGNOSTICS_KEY));
+        if (auditManagerService != null) {
+            boolean overrideApplied = (overrides != null && !overrides.trim().isEmpty()) || !testOverrides.isEmpty();
+            new LivenessAudit(auditManagerService).sessionStarted(workflow, policy, diagnostics, overrideApplied);
+        }
+        pending = new Pending(workflow, fieldId, diagnostics, result);
         try {
             activity.startActivityForResult(LivenessContract.createIntent(activity,
                     new LivenessContract.Request(workflow, fieldId, attempt, config)), LivenessContract.REQUEST_CODE);
@@ -177,8 +182,18 @@ public class LivenessApiImpl implements LivenessPigeon.LivenessApi {
             summary = store.complete(call.workflow, call.fieldId,
                     LivenessResult.builder(SessionState.CANCELLED, Decision.INCONCLUSIVE).build(), call.diagnostics);
         }
+        auditFinished(call, summary);
         call.result.success(toDto(summary));
         return true;
+    }
+
+    /** Records the §8 events of the check that just ended, from its full result kept natively. */
+    private void auditFinished(Pending call, LivenessResultSummary summary) {
+        LivenessResult full = store.lastResult(call.workflow, call.fieldId);
+        LivenessPolicy policy = store.lastPolicy(call.workflow, call.fieldId);
+        if (auditManagerService != null && full != null && policy != null) {
+            new LivenessAudit(auditManagerService).finished(call.workflow, full, policy, summary);
+        }
     }
 
     @Override

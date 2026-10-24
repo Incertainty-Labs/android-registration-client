@@ -396,6 +396,26 @@ public class LivenessApiImplTest {
     }
 
     @Test
+    public void tcAnd18_start_isAudited() {
+        faceAuthApi().startLiveness(WORKFLOW, FACE, new Reply<>());
+
+        verify(audit).auditWithArguments(eq(AuditEvent.LIVENESS_SESSION_STARTED), anyString(), anyString(),
+                eq(WORKFLOW), eq("HYBRID"), eq("camerax:front"), eq("L0-camera"), eq("false"), eq("true"));
+    }
+
+    @Test
+    public void tcAnd18_result_isAuditedFromTheFullResult() {
+        LivenessApiImpl api = faceAuthApi();
+        api.startLiveness(WORKFLOW, FACE, new Reply<>());
+
+        api.onActivityResult(LivenessContract.REQUEST_CODE, Activity.RESULT_OK, LivenessContract.resultIntent(
+                LivenessSessionStore.shared().complete(WORKFLOW, FACE, passed(), false)));
+
+        verify(audit).auditWithArguments(eq(AuditEvent.LIVENESS_PASSED), anyString(), anyString(),
+                eq(WORKFLOW), eq("0.93"), anyString(), anyString(), eq("none"));
+    }
+
+    @Test
     public void tcAnd10_operatorAuthCapture_isLeftToTheMatch() {
         assertTrue(api("enabled=true").faceCaptureAllowed("operatorAuth"));
     }
