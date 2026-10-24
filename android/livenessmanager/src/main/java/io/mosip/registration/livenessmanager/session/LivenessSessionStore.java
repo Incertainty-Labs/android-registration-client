@@ -22,6 +22,11 @@ public final class LivenessSessionStore {
 
     private final Map<String, AttemptTracker> trackers = new HashMap<>();
     private final Map<String, LivenessResult> results = new HashMap<>();
+    /** The policy each field last began under, for the packet evidence (LIVENESS_THRESHOLD, LIVENESS_MODE). */
+    private final Map<String, LivenessPolicy> policies = new HashMap<>();
+    /** The result and policy whose pass let the field's last face capture through, for the packet evidence. */
+    private final Map<String, LivenessResult> capturedResults = new HashMap<>();
+    private final Map<String, LivenessPolicy> capturedPolicies = new HashMap<>();
     /** When each field's last check passed, until a capture uses the pass. */
     private final Map<String, Long> passedAtMs = new HashMap<>();
     private final LongSupplier clockMs;
@@ -58,6 +63,9 @@ public final class LivenessSessionStore {
         if (tracker == null) {
             tracker = new AttemptTracker(policy, clientRetryLimit);
             trackers.put(key, tracker);
+        }
+        if (policy != null) {
+            policies.put(key, policy);
         }
         return tracker.current();
     }
@@ -118,8 +126,33 @@ public final class LivenessSessionStore {
      * @return true if the field's last check passed within {@code maxAgeMs} and the pass was not used yet
      */
     public synchronized boolean consumePass(String workflow, String fieldId, long maxAgeMs) {
-        Long passedAt = passedAtMs.remove(key(workflow, fieldId));
-        return passedAt != null && clockMs.getAsLong() - passedAt <= maxAgeMs;
+        String key = key(workflow, fieldId);
+        Long passedAt = passedAtMs.remove(key);
+        boolean fresh = passedAt != null && clockMs.getAsLong() - passedAt <= maxAgeMs;
+        if (fresh) {
+            // The check that allowed this capture is the one the packet's face must carry, whatever runs later
+            capturedResults.put(key, results.get(key));
+            capturedPolicies.put(key, policies.get(key));
+        }
+        return fresh;
+    }
+
+    /**
+     * @param workflow the {@code Workflow} name
+     * @param fieldId  the field
+     * @return the result whose pass let the field's last face capture through, or null when none did
+     */
+    public synchronized LivenessResult capturedResult(String workflow, String fieldId) {
+        return capturedResults.get(key(workflow, fieldId));
+    }
+
+    /**
+     * @param workflow the {@code Workflow} name
+     * @param fieldId  the field
+     * @return the policy of {@link #capturedResult}, or null
+     */
+    public synchronized LivenessPolicy capturedPolicy(String workflow, String fieldId) {
+        return capturedPolicies.get(key(workflow, fieldId));
     }
 
     /**
@@ -132,6 +165,15 @@ public final class LivenessSessionStore {
     }
 
     /**
+     * @param workflow the {@code Workflow} name
+     * @param fieldId  the field
+     * @return the policy the field last began under, or null
+     */
+    public synchronized LivenessPolicy lastPolicy(String workflow, String fieldId) {
+        return policies.get(key(workflow, fieldId));
+    }
+
+    /**
      * Forgets the field's attempts and result, for example for a new registration.
      *
      * @param workflow the {@code Workflow} name
@@ -141,6 +183,9 @@ public final class LivenessSessionStore {
         String key = key(workflow, fieldId);
         trackers.remove(key);
         results.remove(key);
+        policies.remove(key);
+        capturedResults.remove(key);
+        capturedPolicies.remove(key);
         passedAtMs.remove(key);
     }
 

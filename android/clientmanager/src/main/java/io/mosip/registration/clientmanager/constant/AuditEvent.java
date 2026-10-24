@@ -191,7 +191,20 @@ public enum AuditEvent {
     BIO_SDK_QUALITY_SCORE_FAILED("REG-EVT-094", SYSTEM_EVENT.getCode(), "BIO_SDK_QUALITY_SCORE_FAILED", "Unable to fetch SDK quality score"),
     BIO_SDK_FILES_NOT_FOUND("REG-EVT-095", SYSTEM_EVENT.getCode(), "BIO_SDK_FILES_NOT_FOUND", "No biometric SDK files found in assets"),
     BIO_SDK_PROVIDER_REGISTERED("REG-EVT-096", SYSTEM_EVENT.getCode(), "BIO_SDK_PROVIDER_REGISTERED", "Biometric SDK provider registered"),
-    BIO_SDK_DEDUPE_MATCH("REG-EVT-097", SYSTEM_EVENT.getCode(), "BIO_SDK_DEDUPE_MATCH", "Biometric data matched with existing operator biometrics");
+    BIO_SDK_DEDUPE_MATCH("REG-EVT-097", SYSTEM_EVENT.getCode(), "BIO_SDK_DEDUPE_MATCH", "Biometric data matched with existing operator biometrics"),
+
+    // Face liveness (API.md §8). Android numbers them from REG-EVT-115; Desktop uses its own IDs.
+    LIVENESS_SESSION_STARTED("REG-EVT-115", SYSTEM_EVENT.getCode(), "LIVENESS_SESSION_STARTED", "%s face liveness started mode %s source %s level %s diagnostics %s overrideApplied %s"),
+    LIVENESS_PASSIVE_PASSED("REG-EVT-116", SYSTEM_EVENT.getCode(), "LIVENESS_PASSIVE_PASSED", "%s passive liveness passed score %s frames %s"),
+    LIVENESS_ACTIVE_TRIGGERED("REG-EVT-117", SYSTEM_EVENT.getCode(), "LIVENESS_ACTIVE_TRIGGERED", "%s active liveness triggered score %s threshold %s"),
+    LIVENESS_CHALLENGE_PASSED("REG-EVT-118", USER_EVENT.getCode(), "LIVENESS_CHALLENGE_PASSED", "%s challenge %s passed in %s ms"),
+    LIVENESS_CHALLENGE_FAILED("REG-EVT-119", USER_EVENT.getCode(), "LIVENESS_CHALLENGE_FAILED", "%s challenge %s failed reason %s"),
+    LIVENESS_CHALLENGE_TIMEOUT("REG-EVT-120", USER_EVENT.getCode(), "LIVENESS_CHALLENGE_TIMEOUT", "%s challenge %s timed out"),
+    LIVENESS_PAD_SUSPECTED("REG-EVT-121", SYSTEM_EVENT.getCode(), "LIVENESS_PAD_SUSPECTED", "%s presentation attack suspected cue %s score %s"),
+    LIVENESS_PASSED("REG-EVT-122", SYSTEM_EVENT.getCode(), "LIVENESS_PASSED", "%s face liveness passed score %s challenges %s in %s ms digest %s"),
+    LIVENESS_FAILED("REG-EVT-123", SYSTEM_EVENT.getCode(), "LIVENESS_FAILED", "%s face liveness failed code %s attempt %s/%s"),
+    LIVENESS_MAX_RETRIES("REG-EVT-124", SYSTEM_EVENT.getCode(), "LIVENESS_MAX_RETRIES", "%s face liveness max retries reached policy %s"),
+    LIVENESS_ENGINE_ERROR("REG-EVT-125", SYSTEM_EVENT.getCode(), "LIVENESS_ENGINE_ERROR", "face liveness engine error %s");
 
     AuditEvent(String id, String type, String name, String description) {
         this.id = id;

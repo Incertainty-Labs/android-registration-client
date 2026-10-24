@@ -20,6 +20,7 @@ import io.mosip.registration.livenessmanager.result.LivenessResultSummary;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
@@ -163,6 +164,64 @@ public class LivenessSessionStoreTest {
         store.complete(WORKFLOW, FACE, passed(), false);
 
         assertTrue(store.consumePass(WORKFLOW, FACE, 120_000L));
+    }
+
+    @Test
+    public void tcAnd18_store_keepsThePolicyTheFieldRanUnder() {
+        LivenessPolicy policy = policy(3);
+        store.begin(WORKFLOW, FACE, policy, 0);
+
+        assertSame(policy, store.lastPolicy(WORKFLOW, FACE));
+        assertNull(store.lastPolicy("OPERATOR_AUTH", "operatorAuth"));
+    }
+
+    @Test
+    public void tcAnd18_reset_forgetsThePolicy() {
+        store.begin(WORKFLOW, FACE, policy(3), 0);
+
+        store.reset(WORKFLOW, FACE);
+
+        assertNull(store.lastPolicy(WORKFLOW, FACE));
+    }
+
+    @Test
+    public void tcAnd18_capture_keepsTheResultThatAllowedIt() {
+        store.begin(WORKFLOW, FACE, policy(3), 0);
+        LivenessResult passA = passed();
+        store.complete(WORKFLOW, FACE, passA, false);
+        store.consumePass(WORKFLOW, FACE, 120_000L);
+
+        store.begin(WORKFLOW, FACE, policy(3), 0);
+        store.complete(WORKFLOW, FACE, challengeFailed(), false);
+
+        assertSame(passA, store.capturedResult(WORKFLOW, FACE));
+        assertNotNull(store.capturedPolicy(WORKFLOW, FACE));
+    }
+
+    @Test
+    public void tcAnd18_anUnusedLaterPass_doesNotReplaceTheCapturedResult() {
+        store.begin(WORKFLOW, FACE, policy(3), 0);
+        LivenessResult passA = passed();
+        store.complete(WORKFLOW, FACE, passA, false);
+        store.consumePass(WORKFLOW, FACE, 120_000L);
+
+        store.begin(WORKFLOW, FACE, policy(3), 0);
+        store.complete(WORKFLOW, FACE, passed(), false);
+
+        assertSame(passA, store.capturedResult(WORKFLOW, FACE));
+    }
+
+    @Test
+    public void tcAnd18_noCapture_hasNoCapturedResult_andResetClearsIt() {
+        store.begin(WORKFLOW, FACE, policy(3), 0);
+        store.complete(WORKFLOW, FACE, passed(), false);
+        assertNull(store.capturedResult(WORKFLOW, FACE));
+
+        store.consumePass(WORKFLOW, FACE, 120_000L);
+        store.reset(WORKFLOW, FACE);
+
+        assertNull(store.capturedResult(WORKFLOW, FACE));
+        assertNull(store.capturedPolicy(WORKFLOW, FACE));
     }
 
     @Test(expected = IllegalStateException.class)

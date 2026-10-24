@@ -44,6 +44,7 @@ import javax.inject.Inject;
 import javax.inject.Singleton;
 
 import io.mosip.biometrics.util.face.FaceBDIR;
+import io.mosip.registration.clientmanager.util.LivenessPacketEvidence;
 import io.mosip.registration.clientmanager.BuildConfig;
 import io.mosip.registration.clientmanager.R;
 import io.mosip.registration.clientmanager.config.SessionManager;
@@ -775,6 +776,8 @@ public class RegistrationServiceImpl implements RegistrationService {
             String fieldId = key.split("_")[0];
             String bioAttribute = key.split("_")[1];
             BIR bir = buildBIR(registrationDto.getBiometrics().get(key));
+            // B-12: a face captured after a passed liveness check carries its evidence (API.md §9)
+            LivenessPacketEvidence.addTo(bir, registrationDto.getBiometrics().get(key), fieldId);
             if (!capturedBiometrics.containsKey(fieldId)) {
                 capturedBiometrics.put(fieldId, new ArrayList<>());
             }
