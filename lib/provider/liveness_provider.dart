@@ -26,6 +26,9 @@ class LivenessProvider with ChangeNotifier {
   final Map<String, LivenessResultDto> _results = {};
   final Map<String, String> _errors = {};
 
+  /// The fields each workflow ran, so a new registration can reset them all.
+  final Map<String, Set<String>> _fields = {};
+
   /// Whether a check is open, or how the last one ended. One check runs at a time.
   LivenessStatus status = LivenessStatus.idle;
 
@@ -57,6 +60,12 @@ class LivenessProvider with ChangeNotifier {
   bool passedFor(String workflow, String fieldId) {
     final result = resultFor(workflow, fieldId);
     return result?.finalState == 'PASSED' && result?.decision == 'LIVE';
+  }
+
+  /// Whether the field's attempts are used up: its last check failed and allows no retry (S12).
+  bool blockedFor(String workflow, String fieldId) {
+    final result = resultFor(workflow, fieldId);
+    return result != null && !passedFor(workflow, fieldId) && result.retryAllowed == false;
   }
 
   /// UI hints for [workflow] (enabled, mode, maxAttempts, onMaxRetries, activeEnabled, testScreen); empty when
@@ -100,6 +109,7 @@ class LivenessProvider with ChangeNotifier {
       return null;
     }
     final key = _key(workflow, fieldId);
+    _fields.putIfAbsent(workflow, () => {}).add(fieldId);
     status = LivenessStatus.checking;
     _errors.remove(key);
     notifyListeners();
@@ -115,6 +125,15 @@ class LivenessProvider with ChangeNotifier {
       return null;
     } finally {
       notifyListeners();
+    }
+  }
+
+  /// Starts every field [workflow] ran again, e.g. when a new registration starts.
+  Future<void> resetWorkflow(String workflow) async {
+    for (final fieldId in List.of(_fields[workflow] ?? <String>{})) {
+      if (await resetAttempts(workflow, fieldId)) {
+        _fields[workflow]!.remove(fieldId);
+      }
     }
   }
 

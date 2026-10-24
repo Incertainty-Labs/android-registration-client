@@ -188,6 +188,30 @@ void main() {
     expect(await provider.hints('RESIDENT_REGISTRATION'), isEmpty);
   });
 
+  test('TC-AND-06 a field is blocked only once its attempts are used up', () async {
+    await run(face, LivenessResultDto(finalState: 'FAILED', decision: 'INCONCLUSIVE', retryAllowed: true));
+    expect(provider.blockedFor(workflow, face), isFalse);
+
+    await run(face, LivenessResultDto(
+        finalState: 'FAILED', decision: 'INCONCLUSIVE', errorCode: 'LIV-011', retryAllowed: false));
+    expect(provider.blockedFor(workflow, face), isTrue);
+    expect(provider.blockedFor(workflow, introducer), isFalse);
+  });
+
+  test('TC-AND-06 a new registration resets every field the workflow ran', () async {
+    await run(face, result('FAILED', 'INCONCLUSIVE'));
+    await run(introducer, result('PASSED', 'LIVE'));
+    final other = provider.start('OPERATOR_LOGIN', 'operatorAuth');
+    service.pending!.complete(result('PASSED', 'LIVE'));
+    await other;
+
+    await provider.resetWorkflow(workflow);
+
+    expect(service.resets.toSet(), {'$workflow/$face', '$workflow/$introducer'});
+    expect(provider.resultFor(workflow, face), isNull);
+    expect(provider.passedFor('OPERATOR_LOGIN', 'operatorAuth'), isTrue);
+  });
+
   test('TC-AND-02 resetAttempts refused natively reports false', () async {
     service.resetError = PlatformException(code: 'LIVENESS_IN_PROGRESS');
 
