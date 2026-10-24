@@ -148,14 +148,17 @@ public class BiometricsDetailsApi implements BiometricsPigeon.BiometricsApi {
     @Override
     public void invokeDiscoverSbi(@NonNull String fieldId, @NonNull String modality,
             @NonNull BiometricsPigeon.Result<String> result) {
-        // The Flutter gate runs liveness first; this refuses any face capture path that skipped it (REG-SBI-121)
-        if (getModality(modality) == Modality.FACE && !faceCaptureGuard.allows(fieldId)) {
-            result.error(new BiometricsPigeon.FlutterError(SBIError.SBI_LIVENESS_REQUIRED.getErrorCode(),
-                    SBIError.SBI_LIVENESS_REQUIRED.getErrorMessage(), null));
+        // A capture already running keeps its modality and field; the new call is rejected (REG-SBI-119),
+        // before the guard, so the rejection does not use up a liveness pass
+        if (!pendingCall.start(result)) {
             return;
         }
-        // A capture already running keeps its modality and field; the new call is rejected (REG-SBI-119).
-        if (!pendingCall.start(result)) {
+        // The Flutter gate runs liveness first; this refuses any face capture path that skipped it (REG-SBI-121).
+        // The pass is used up here even if the capture then fails or is cancelled: retrying means a new liveness
+        // check. That is deliberate; do not keep a pass across failed captures.
+        if (getModality(modality) == Modality.FACE && !faceCaptureGuard.allows(fieldId)) {
+            pendingCall.fail(SBIError.SBI_LIVENESS_REQUIRED.getErrorCode(),
+                    SBIError.SBI_LIVENESS_REQUIRED.getErrorMessage());
             return;
         }
         auditManagerService.audit(AuditEvent.BIOMETRIC_CAPTURE, Components.REGISTRATION);

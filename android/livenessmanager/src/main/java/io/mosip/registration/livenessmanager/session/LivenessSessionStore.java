@@ -26,9 +26,12 @@ public final class LivenessSessionStore {
     private final Map<String, Long> passedAtMs = new HashMap<>();
     private final LongSupplier clockMs;
 
-    /** A store on the system clock; the app uses {@link #shared()}. */
+    /**
+     * A store on a monotonic clock, so changing the device's date and time can neither keep a pass fresh nor expire
+     * it early; the app uses {@link #shared()}.
+     */
     public LivenessSessionStore() {
-        this(System::currentTimeMillis);
+        this(() -> System.nanoTime() / 1_000_000L);
     }
 
     LivenessSessionStore(LongSupplier clockMs) {
