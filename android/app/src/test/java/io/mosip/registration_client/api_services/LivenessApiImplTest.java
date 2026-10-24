@@ -16,6 +16,7 @@ import org.robolectric.shadows.ShadowActivity;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import io.mosip.registration.clientmanager.constant.AuditEvent;
@@ -310,6 +311,44 @@ public class LivenessApiImplTest {
 
         assertEquals(Boolean.FALSE, reply.value.getAuthenticated());
         assertEquals("LIVENESS_DISABLED", reply.value.getErrorCode());
+    }
+
+    @Test
+    public void tcAnd10_seed_isRefusedWithoutTheTestScreen() {
+        authCapture.hold(Collections.singletonList(new BiometricsDto()));
+        Reply<Void> reply = new Reply<>();
+
+        faceAuthApi().seedFaceTemplate(OPERATOR, reply);
+
+        assertEquals("TEST_OVERRIDES_NOT_ALLOWED", reply.code());
+        verify(faceAuth, never()).seedTemplate(anyString(), anyList());
+    }
+
+    @Test
+    public void tcAnd10_seed_savesTheHeldCaptureForTheUser() {
+        LivenessApiImpl api = api("enabled=true", true);
+        api.setFaceAuth(faceAuth, authCapture, audit);
+        List<BiometricsDto> face = Collections.singletonList(new BiometricsDto());
+        authCapture.hold(face);
+        when(faceAuth.seedTemplate(OPERATOR, face)).thenReturn(true);
+        Reply<Void> reply = new Reply<>();
+
+        api.seedFaceTemplate(OPERATOR, reply);
+
+        assertEquals(1, reply.calls);
+        assertNull(reply.error);
+        assertTrue(authCapture.take().isEmpty());
+    }
+
+    @Test
+    public void tcAnd10_seedWithoutACapture_failsClearly() {
+        LivenessApiImpl api = api("enabled=true", true);
+        api.setFaceAuth(faceAuth, authCapture, audit);
+        Reply<Void> reply = new Reply<>();
+
+        api.seedFaceTemplate(OPERATOR, reply);
+
+        assertEquals("FACE_NO_CAPTURE", reply.code());
     }
 
     @Test

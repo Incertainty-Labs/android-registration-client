@@ -38,6 +38,9 @@ public interface UserBiometricDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     void insertAllUserBiometrics(List<UserBiometric> userBiometrics);
 
+    @Query("delete from user_biometric where usr_id=:userId and LOWER(bmtyp_code) = 'face'")
+    void deleteFaceByUsrId(String userId);
+
     @Query("delete from user_biometric where usr_id=:userId")
     void deleteByUsrId(String userId);
 }

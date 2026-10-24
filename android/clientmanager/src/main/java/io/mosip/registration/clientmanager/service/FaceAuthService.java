@@ -96,6 +96,24 @@ public class FaceAuthService {
         }
     }
 
+    /**
+     * Debug builds only (B-21 seed, R2): saves the captured face as the user's face template, for face
+     * authentication without online onboarding.
+     *
+     * @param userId  the operator or supervisor
+     * @param capture the face just captured through the SBI
+     * @return false when there is no face to save
+     */
+    public boolean seedTemplate(String userId, List<BiometricsDto> capture) {
+        if (capture == null || capture.isEmpty()) {
+            return false;
+        }
+        BiometricsDto face = capture.get(0);
+        userBiometricRepository.replaceFaceTemplate(userId, CryptoUtil.base64decoder.decode(face.getBioValue()),
+                (int) face.getQualityScore());
+        return true;
+    }
+
     private static BiometricRecord probe(List<BiometricsDto> capture) {
         BiometricRecord record = new BiometricRecord();
         for (BiometricsDto face : capture) {

@@ -286,6 +286,22 @@ public class LivenessApiImpl implements LivenessPigeon.LivenessApi {
                 .build());
     }
 
+    @Override
+    public void seedFaceTemplate(@NonNull String userId, @NonNull LivenessPigeon.Result<Void> result) {
+        if (!testScreen) {
+            result.error(error(TEST_OVERRIDES_NOT_ALLOWED, "This build has no liveness test screen"));
+            return;
+        }
+        List<BiometricsDto> capture = operatorAuthCapture == null ? Collections.emptyList()
+                : operatorAuthCapture.take();
+        if (faceAuthService == null || !faceAuthService.seedTemplate(userId, capture)) {
+            result.error(error("FACE_NO_CAPTURE", "No face captured to save"));
+            return;
+        }
+        Log.w(TAG, "Debug face template seeded for " + userId);
+        result.success(null);
+    }
+
     private static String authMessageKey(FaceAuthService.Outcome outcome) {
         switch (outcome) {
             case MATCHED:

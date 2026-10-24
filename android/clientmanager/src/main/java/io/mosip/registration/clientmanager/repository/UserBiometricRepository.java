@@ -88,6 +88,28 @@ public class UserBiometricRepository {
         return faces;
     }
 
+    /**
+     * Debug builds only (B-21 seed, R2): makes {@code iso} the user's only face template, keeping their other
+     * biometrics, so face authentication can be shown without online onboarding.
+     *
+     * @param userId       the operator or supervisor
+     * @param iso          the ISO 19794-5 face image
+     * @param qualityScore the capture's quality score
+     */
+    public void replaceFaceTemplate(String userId, byte[] iso, int qualityScore) {
+        UserBiometric face = new UserBiometric();
+        face.setUsrId(userId);
+        face.setBioTypeCode(BiometricType.FACE.value());
+        face.setBioAttributeCode("face");
+        face.setBioTemplate(iso);
+        face.setQualityScore(qualityScore);
+        face.setIsDeleted(false);
+        userBiometricDao.deleteFaceByUsrId(userId);
+        List<UserBiometric> faces = new ArrayList<>();
+        faces.add(face);
+        userBiometricDao.insertAllUserBiometrics(faces);
+    }
+
     public String saveOnboardStatus(String userId) {
         UserDetail userDetail = userDetailDao.getUserDetail(userId);
         Long updatedTime = System.currentTimeMillis();

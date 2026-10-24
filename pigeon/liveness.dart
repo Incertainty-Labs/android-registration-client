@@ -40,6 +40,12 @@ abstract class LivenessApi {
   @async
   void setTestOverrides(String overrides);
 
+  /// Test screen only (B-21 seed, R2): saves the face just captured under operatorAuth as [userId]'s face template,
+  /// so face authentication can be shown without online onboarding. Refused with TEST_OVERRIDES_NOT_ALLOWED unless
+  /// the build allows the test screen; FACE_NO_CAPTURE when no face was captured.
+  @async
+  void seedFaceTemplate(String userId);
+
   /// Liveness → SBI capture → passive PAD + binder → offline 1:1 FACE match.
   @async
   AuthResultDto authenticateWithFace(String userId, String workflow);
