@@ -13,7 +13,7 @@ public class LivenessSettingsTest {
     private static final String PREFIX = "mosip.registration.face.liveness.";
 
     @Test
-    public void tcAnd_synced_keepsTheLivenessKeysAndTheFaceRetryLimit() {
+    public void tcAnd02_synced_keepsTheLivenessKeysAndTheFaceRetryLimit() {
         Map<String, Object> synced = new HashMap<>();
         synced.put(PREFIX + "max.retries", 3);
         synced.put("mosip.registration.num_of_face_retries", "2");
@@ -27,7 +27,7 @@ public class LivenessSettingsTest {
     }
 
     @Test
-    public void tcAnd_overrides_winOverSyncedValuesAndTakeShortKeys() {
+    public void tcAnd02_overrides_winOverSyncedValuesAndTakeShortKeys() {
         Map<String, Object> synced = new HashMap<>();
         synced.put(PREFIX + "enabled", "false");
 
@@ -38,7 +38,7 @@ public class LivenessSettingsTest {
     }
 
     @Test
-    public void tcAnd_overrides_acceptFullKeys() {
+    public void tcAnd02_overrides_acceptFullKeys() {
         Map<String, String> config = LivenessSettings.merge(new HashMap<>(),
                 "mosip.registration.num_of_face_retries=1");
 
@@ -46,7 +46,7 @@ public class LivenessSettingsTest {
     }
 
     @Test
-    public void tcAnd_malformedOverrides_areIgnored() {
+    public void tcAnd02_malformedOverrides_areIgnored() {
         Map<String, String> config = LivenessSettings.merge(new HashMap<>(), "enabled;=x; ;max.retries=2");
 
         assertEquals(1, config.size());
@@ -54,7 +54,7 @@ public class LivenessSettingsTest {
     }
 
     @Test
-    public void tcAnd_nullSyncedValue_isLeftOut() {
+    public void tcAnd02_nullSyncedValue_isLeftOut() {
         Map<String, Object> synced = new HashMap<>();
         synced.put(PREFIX + "mode", null);
 

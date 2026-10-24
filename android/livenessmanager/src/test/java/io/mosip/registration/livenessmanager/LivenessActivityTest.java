@@ -294,6 +294,22 @@ public class LivenessActivityTest {
     }
 
     @Test
+    public void tcAnd_attemptsUsedUp_returnsMaxRetriesWithoutTheCamera() {
+        LivenessActivity first = launch("FAIL_CHALLENGE", "1").get();
+        runUntilResult();
+        Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(LivenessActivity.FINAL_SCREEN_MS));
+        assertEquals("FAILED", result(first).finalState());
+        binder.analyzer = null;
+
+        LivenessActivity second = launch("PASS_ACTIVE", "1").get();
+
+        LivenessResultSummary summary = result(second);
+        assertEquals("LIV-011", summary.errorCode());
+        assertFalse(summary.retryAllowed());
+        assertNull("camera bound", binder.analyzer);
+    }
+
+    @Test
     public void tcAnd_requestWithoutWorkflow_finishesWithoutAResult() {
         Intent intent = new Intent(app, LivenessActivity.class);
 
@@ -305,8 +321,15 @@ public class LivenessActivityTest {
     }
 
     private ActivityController<LivenessActivity> launch(String scenario) {
+        return launch(scenario, null);
+    }
+
+    private ActivityController<LivenessActivity> launch(String scenario, String maxRetries) {
         Map<String, String> config = new HashMap<>();
         config.put("mosip.registration.face.liveness.enabled", "true");
+        if (maxRetries != null) {
+            config.put("mosip.registration.face.liveness.max.retries", maxRetries);
+        }
         config.put("mosip.registration.face.liveness.stub.force", scenario);
         Intent intent = LivenessContract.createIntent(app,
                 new LivenessContract.Request(WORKFLOW, FACE, 1, config));

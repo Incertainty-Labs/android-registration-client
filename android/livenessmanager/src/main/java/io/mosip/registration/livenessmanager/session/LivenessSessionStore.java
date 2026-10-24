@@ -3,8 +3,11 @@ package io.mosip.registration.livenessmanager.session;
 import java.util.HashMap;
 import java.util.Map;
 
+import io.mosip.registration.liveness.api.Decision;
+import io.mosip.registration.liveness.api.LivenessErrorCode;
 import io.mosip.registration.liveness.api.LivenessPolicy;
 import io.mosip.registration.liveness.api.LivenessResult;
+import io.mosip.registration.liveness.api.SessionState;
 import io.mosip.registration.livenessmanager.result.LivenessResultSummary;
 
 /**
@@ -64,6 +67,24 @@ public final class LivenessSessionStore {
         boolean retryAllowed = tracker.record(result);
         results.put(key, result);
         return LivenessResultSummary.of(result, attempt, tracker.limit(), retryAllowed, diagnosticsEnabled);
+    }
+
+    /**
+     * The retry limit is a control against repeated attacks, so once a field's attempts are used up no new
+     * session may start (LIV-011) until {@link #reset}.
+     *
+     * @param workflow the {@code Workflow} name
+     * @param fieldId  the field
+     * @return the max-retries failure to show instead of a new session, or null while attempts are left
+     */
+    public synchronized LivenessResultSummary limitReached(String workflow, String fieldId) {
+        AttemptTracker tracker = trackers.get(key(workflow, fieldId));
+        if (tracker == null || tracker.current() <= tracker.limit()) {
+            return null;
+        }
+        LivenessResult maxRetries = LivenessResult.builder(SessionState.FAILED, Decision.INCONCLUSIVE)
+                .errorCode(LivenessErrorCode.MAX_RETRIES_EXCEEDED).build();
+        return LivenessResultSummary.of(maxRetries, tracker.limit(), tracker.limit(), false, false);
     }
 
     /**
