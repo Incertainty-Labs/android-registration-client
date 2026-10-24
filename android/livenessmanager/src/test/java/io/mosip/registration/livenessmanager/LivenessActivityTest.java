@@ -29,10 +29,14 @@ import org.robolectric.annotation.Config;
 import org.robolectric.shadows.ShadowActivity;
 import org.robolectric.shadows.ShadowAlertDialog;
 
+import java.io.File;
 import java.nio.ByteBuffer;
 import java.time.Duration;
+import java.util.ArrayDeque;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
@@ -307,6 +311,35 @@ public class LivenessActivityTest {
         assertEquals("LIV-011", summary.errorCode());
         assertFalse(summary.retryAllowed());
         assertNull("camera bound", binder.analyzer);
+    }
+
+    /** Stub engine: checks the activity and camera plumbing; re-run with the real engine in B-07. */
+    @Test
+    public void tcSec02_aWholeSession_writesNoFramesToDisk() {
+        Map<String, String> before = filesUnder(app.getCacheDir(), app.getFilesDir(), app.getNoBackupFilesDir());
+
+        LivenessActivity activity = launch("PASS_ACTIVE").get();
+        runUntilResult();
+        Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(LivenessActivity.FINAL_SCREEN_MS));
+        assertEquals("PASSED", result(activity).finalState());
+
+        assertEquals(before, filesUnder(app.getCacheDir(), app.getFilesDir(), app.getNoBackupFilesDir()));
+    }
+
+    /** Every file under the roots, with its size and last change, so an overwrite or an append shows too. */
+    private static Map<String, String> filesUnder(File... roots) {
+        Map<String, String> files = new TreeMap<>();
+        ArrayDeque<File> todo = new ArrayDeque<>(Arrays.asList(roots));
+        while (!todo.isEmpty()) {
+            File file = todo.pop();
+            File[] children = file.listFiles();
+            if (children == null) {
+                files.put(file.getAbsolutePath(), file.length() + ":" + file.lastModified());
+            } else {
+                todo.addAll(Arrays.asList(children));
+            }
+        }
+        return files;
     }
 
     @Test
