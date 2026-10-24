@@ -29,10 +29,14 @@ import org.robolectric.annotation.Config;
 import org.robolectric.shadows.ShadowActivity;
 import org.robolectric.shadows.ShadowAlertDialog;
 
+import java.io.File;
 import java.nio.ByteBuffer;
 import java.time.Duration;
+import java.util.ArrayDeque;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
@@ -309,9 +313,10 @@ public class LivenessActivityTest {
         assertNull("camera bound", binder.analyzer);
     }
 
+    /** Stub engine: checks the activity and camera plumbing; re-run with the real engine in B-07. */
     @Test
     public void tcSec02_aWholeSession_writesNoFramesToDisk() {
-        java.util.Set<String> before = filesUnder(app.getCacheDir(), app.getFilesDir(), app.getNoBackupFilesDir());
+        Map<String, String> before = filesUnder(app.getCacheDir(), app.getFilesDir(), app.getNoBackupFilesDir());
 
         LivenessActivity activity = launch("PASS_ACTIVE").get();
         runUntilResult();
@@ -321,19 +326,20 @@ public class LivenessActivityTest {
         assertEquals(before, filesUnder(app.getCacheDir(), app.getFilesDir(), app.getNoBackupFilesDir()));
     }
 
-    private static java.util.Set<String> filesUnder(java.io.File... roots) {
-        java.util.Set<String> paths = new java.util.TreeSet<>();
-        java.util.ArrayDeque<java.io.File> todo = new java.util.ArrayDeque<>(java.util.Arrays.asList(roots));
+    /** Every file under the roots, with its size and last change, so an overwrite or an append shows too. */
+    private static Map<String, String> filesUnder(File... roots) {
+        Map<String, String> files = new TreeMap<>();
+        ArrayDeque<File> todo = new ArrayDeque<>(Arrays.asList(roots));
         while (!todo.isEmpty()) {
-            java.io.File file = todo.pop();
-            java.io.File[] children = file.listFiles();
+            File file = todo.pop();
+            File[] children = file.listFiles();
             if (children == null) {
-                paths.add(file.getAbsolutePath());
+                files.put(file.getAbsolutePath(), file.length() + ":" + file.lastModified());
             } else {
-                todo.addAll(java.util.Arrays.asList(children));
+                todo.addAll(Arrays.asList(children));
             }
         }
-        return paths;
+        return files;
     }
 
     @Test
