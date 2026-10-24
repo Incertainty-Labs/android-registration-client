@@ -1,0 +1,49 @@
+package io.mosip.registration.clientmanager.util;
+
+import java.util.HashMap;
+
+import io.mosip.registration.packetmanager.cbeffutil.jaxbclasses.BIR;
+import io.mosip.registration.clientmanager.dto.registration.BiometricsDto;
+import io.mosip.registration.liveness.api.LivenessPolicy;
+import io.mosip.registration.liveness.api.LivenessResult;
+import io.mosip.registration.liveness.api.SessionState;
+import io.mosip.registration.liveness.evidence.PacketEvidence;
+import io.mosip.registration.livenessmanager.session.LivenessSessionStore;
+
+/**
+ * Adds the API.md §9 liveness keys (LIVENESS_DECISION, _SCORE, _THRESHOLD, _MODE, _CHALLENGES, _ENGINE_VERSION and,
+ * from the real engine, _EVIDENCE_DIGEST) to a resident's face BIR, from the field's passed liveness check (B-12).
+ * Without a passed check, for example when liveness is off, the BIR stays as MOSIP builds it.
+ */
+public final class LivenessPacketEvidence {
+
+    private static final String RESIDENT_WORKFLOW = "RESIDENT_REGISTRATION";
+    private static final String FACE_MODALITY = "Face";
+
+    private LivenessPacketEvidence() {
+    }
+
+    /**
+     * @param bir     the BIR built for {@code dto}
+     * @param dto     the captured biometric
+     * @param fieldId the biometric field, e.g. {@code individualBiometrics}
+     */
+    public static void addTo(BIR bir, BiometricsDto dto, String fieldId) {
+        addTo(LivenessSessionStore.shared(), bir, dto, fieldId);
+    }
+
+    static void addTo(LivenessSessionStore store, BIR bir, BiometricsDto dto, String fieldId) {
+        if (dto == null || !FACE_MODALITY.equalsIgnoreCase(dto.getModality()) || dto.isException()) {
+            return;
+        }
+        LivenessResult result = store.lastResult(RESIDENT_WORKFLOW, fieldId);
+        LivenessPolicy policy = store.lastPolicy(RESIDENT_WORKFLOW, fieldId);
+        if (result == null || policy == null || result.finalState() != SessionState.PASSED) {
+            return;
+        }
+        if (bir.getOthers() == null) {
+            bir.setOthers(new HashMap<>());
+        }
+        bir.getOthers().putAll(PacketEvidence.of(result, policy));
+    }
+}
