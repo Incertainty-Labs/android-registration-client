@@ -77,6 +77,17 @@ void main() {
     expect(service.starts, 1);
   });
 
+  testWidgets('B-07 by default the check runs the real engine, with no forced scenario', (tester) async {
+    await tester.pumpWidget(app(const LivenessTestPage()));
+    await tester.pumpAndSettle();
+    expect(find.text('Real engine'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('liveness-test-start')));
+    await tester.pump();
+
+    expect(service.testOverrides, 'enabled=true');
+  });
+
   testWidgets('B-21 the field is a test-only id for every workflow', (tester) async {
     await tester.pumpWidget(app(const LivenessTestPage()));
     await tester.pumpAndSettle();

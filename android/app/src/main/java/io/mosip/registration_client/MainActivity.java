@@ -67,6 +67,8 @@ import io.mosip.registration.clientmanager.spi.SyncRestService;
 import io.mosip.registration.clientmanager.util.SyncRestUtil;
 import io.mosip.registration.keymanager.spi.ClientCryptoManagerService;
 
+import io.mosip.registration.livenessmanager.engine.AssetModelLoader;
+import io.mosip.registration.livenessmanager.engine.EngineHolder;
 import io.mosip.registration.transliterationmanager.service.TransliterationServiceImpl;
 import io.mosip.registration_client.api_services.AuditDetailsApi;
 import io.mosip.registration_client.api_services.AuthenticationApi;
@@ -252,6 +254,9 @@ public class MainActivity extends FlutterActivity {
         // Register receiver for rescheduling jobs when cron expression changes
         IntentFilter rescheduleFilter = new IntentFilter("RESCHEDULE_JOB");
         registerReceiver(rescheduleReceiver, rescheduleFilter);
+
+        // B-07: load the liveness models and build the engine once, off the main thread, before the first check
+        EngineHolder.shared().start(Executors.newSingleThreadExecutor(), AssetModelLoader.fromAssets(this));
     }
 
     private void initializeAutoSync() {
@@ -414,6 +419,7 @@ public class MainActivity extends FlutterActivity {
         LivenessPigeon.LivenessApi.setup(flutterEngine.getDartExecutor().getBinaryMessenger(), livenessApi);
         livenessApi.setCallbackActivity(this);
         biometricsDetailsApi.setFaceCaptureGuard(livenessApi::faceCaptureAllowed);
+        biometricsDetailsApi.setExceptionPhotoGuard(livenessApi::exceptionPhotoAllowed);
         biometricsDetailsApi.setOperatorAuthCapture(operatorAuthCapture);
         RegistrationDataPigeon.RegistrationDataApi.setup(flutterEngine.getDartExecutor().getBinaryMessenger(), registrationApi);
         PacketAuthPigeon.PacketAuthApi.setup(flutterEngine.getDartExecutor().getBinaryMessenger(), packetAuthenticationApi);

@@ -153,6 +153,13 @@ public class BiometricsDetailsApi implements BiometricsPigeon.BiometricsApi {
         this.faceCaptureGuard = guard;
     }
 
+    private FaceCaptureGuard exceptionPhotoGuard = fieldId -> true;
+
+    /** @param guard refuses an exception photo that no fresh passive liveness pass covers (B-07) */
+    public void setExceptionPhotoGuard(FaceCaptureGuard guard) {
+        this.exceptionPhotoGuard = guard;
+    }
+
     @Override
     public void invokeDiscoverSbi(@NonNull String fieldId, @NonNull String modality,
             @NonNull BiometricsPigeon.Result<String> result) {
@@ -164,7 +171,9 @@ public class BiometricsDetailsApi implements BiometricsPigeon.BiometricsApi {
         // The Flutter gate runs liveness first; this refuses any face capture path that skipped it (REG-SBI-121).
         // The pass is used up here even if the capture then fails or is cancelled: retrying means a new liveness
         // check. That is deliberate; do not keep a pass across failed captures.
-        if (getModality(modality) == Modality.FACE && !faceCaptureGuard.allows(fieldId)) {
+        Modality requested = getModality(modality);
+        if ((requested == Modality.FACE && !faceCaptureGuard.allows(fieldId))
+                || (requested == Modality.EXCEPTION_PHOTO && !exceptionPhotoGuard.allows(fieldId))) {
             pendingCall.fail(SBIError.SBI_LIVENESS_REQUIRED.getErrorCode(),
                     SBIError.SBI_LIVENESS_REQUIRED.getErrorMessage());
             return;

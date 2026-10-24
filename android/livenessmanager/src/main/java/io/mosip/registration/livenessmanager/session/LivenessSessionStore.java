@@ -9,6 +9,7 @@ import io.mosip.registration.liveness.api.LivenessErrorCode;
 import io.mosip.registration.liveness.api.LivenessPolicy;
 import io.mosip.registration.liveness.api.LivenessResult;
 import io.mosip.registration.liveness.api.SessionState;
+import io.mosip.registration.liveness.engine.AttemptTracker;
 import io.mosip.registration.livenessmanager.result.LivenessResultSummary;
 
 /**
