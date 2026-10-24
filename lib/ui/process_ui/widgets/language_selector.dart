@@ -12,11 +12,13 @@ import 'package:provider/provider.dart';
 import 'package:registration_client/model/process.dart';
 
 import 'package:registration_client/provider/global_provider.dart';
+import 'package:registration_client/provider/liveness_provider.dart';
 import 'package:registration_client/provider/registration_task_provider.dart';
 import 'package:registration_client/ui/process_ui/process_type.dart';
 
 import 'package:registration_client/ui/widgets/language_component.dart';
 import 'package:registration_client/utils/app_config.dart';
+import 'package:registration_client/utils/liveness_gate.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 
 class LanguageSelector extends StatefulWidget {
@@ -34,6 +36,7 @@ class _LanguageSelectorState extends State<LanguageSelector> {
   String? mandatoryLanguage;
   late GlobalProvider globalProvider;
   late RegistrationTaskProvider registrationTaskProvider;
+  late LivenessProvider livenessProvider;
 
   _triggerNavigation() {
     if (widget.newProcess.flow == "NEW") {
@@ -105,6 +108,8 @@ class _LanguageSelectorState extends State<LanguageSelector> {
         widget.newProcess.id!,
         latitude: latitude,
         longitude: longitude);
+    // A new resident starts with all face liveness attempts again
+    await livenessProvider.resetWorkflow(LivenessGate.workflow);
 
     registrationTaskProvider.addDemographicField("preferredLang",
         globalProvider.fieldInputValue["preferredLang"].toString());
@@ -125,6 +130,7 @@ class _LanguageSelectorState extends State<LanguageSelector> {
     globalProvider = Provider.of<GlobalProvider>(context, listen: false);
     registrationTaskProvider =
         Provider.of<RegistrationTaskProvider>(context, listen: false);
+    livenessProvider = Provider.of<LivenessProvider>(context, listen: false);
     String lang = globalProvider.mandatoryLanguages.first!;
     mandatoryLanguage = globalProvider.codeToLanguageMapper[lang];
     globalProvider.getAudit("REG-LOAD-006", "REG-MOD-103");
