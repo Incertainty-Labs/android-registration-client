@@ -16,7 +16,7 @@ class FaceAuthOutcome {
 /// the field operatorAuth (held natively, never in the packet), then the 1:1 match against the user's templates.
 class FaceAuth {
   FaceAuth(this._provider, {required this.workflow, Future<void> Function()? sbiCapture})
-      : _sbiCapture = sbiCapture ?? _captureOperatorFace;
+      : _sbiCapture = sbiCapture ?? captureOperatorFace;
 
   /// The field the authenticating face is captured under.
   static const fieldId = 'operatorAuth';
@@ -27,7 +27,8 @@ class FaceAuth {
   final LivenessProvider _provider;
   final Future<void> Function() _sbiCapture;
 
-  static Future<void> _captureOperatorFace() =>
+  /// The SBI face capture under [fieldId], held natively for one match (or one seed).
+  static Future<void> captureOperatorFace() =>
       BiometricsApi().invokeDiscoverSbi(fieldId, LivenessGate.faceModality);
 
   /// Authenticates [userId]. SBI errors reach the caller.

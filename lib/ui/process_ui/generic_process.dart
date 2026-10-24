@@ -26,6 +26,7 @@ import 'package:registration_client/pigeon/registration_data_pigeon.dart';
 import 'package:registration_client/provider/auth_provider.dart';
 import 'package:registration_client/provider/connectivity_provider.dart';
 import 'package:registration_client/provider/global_provider.dart';
+import 'package:registration_client/ui/widgets/face_auth_button.dart';
 import 'package:registration_client/provider/registration_task_provider.dart';
 
 import 'package:registration_client/ui/post_registration/acknowledgement_page.dart';
@@ -73,6 +74,9 @@ class _GenericProcessState extends State<GenericProcess>
 
   String username = '';
   String password = '';
+
+  /// The operator authenticated the packet with their face instead of the password (B-09).
+  bool faceAuthenticated = false;
 
   @override
   void initState() {
@@ -697,7 +701,8 @@ class _GenericProcessState extends State<GenericProcess>
       } else {
         if (globalProvider.newProcessTabIndex == size + 1) {
           globalProvider.getAudit("REG_OPERATOR_AUTH_PASSWORD", "REG-MOD-103");
-          bool isPacketAuthenticated = await _authenticatePacket(context);
+          bool isPacketAuthenticated =
+              faceAuthenticated || await _authenticatePacket(context);
           if (!isPacketAuthenticated) {
             return;
           }
@@ -717,6 +722,7 @@ class _GenericProcessState extends State<GenericProcess>
           setState(() {
             username = '';
             password = '';
+            faceAuthenticated = false;
           });
         }
         if (globalProvider.newProcessTabIndex == size + 2) {
@@ -1229,6 +1235,15 @@ class _GenericProcessState extends State<GenericProcess>
               _getAuthIcon(),
               SizedBox(
                 height: 26.h,
+              ),
+              // UI_UX_SPEC §6.4: face above the password, when face auth is configured; the password stays
+              FaceAuthButton(
+                userId: authProvider.currentUser.userId,
+                workflow: 'OPERATOR_PACKET_AUTH',
+                onAuthenticated: () => setState(() {
+                  faceAuthenticated = true;
+                  username = authProvider.currentUser.userId;
+                }),
               ),
               Text(
                 appLocalizations.authenticate_using_password,
