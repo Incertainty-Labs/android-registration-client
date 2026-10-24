@@ -87,8 +87,8 @@ class LivenessProvider with ChangeNotifier {
   /// Whether this build has the B-21 liveness test screen.
   Future<bool> testScreenAllowed() async => (await hints('RESIDENT_REGISTRATION'))['testScreen'] == 'true';
 
-  /// Test screen only: turns liveness on and plays the stub [scenario] (e.g. "PAD") in the next checks; null for
-  /// the build's default scenario. The screen exists to exercise liveness, even where the server leaves it off.
+  /// Test screen only: turns liveness on and plays the stub [scenario] (e.g. "PAD") in the next checks; null runs
+  /// the real engine. The screen exists to exercise liveness, even where the server leaves it off.
   /// Returns null, or the PlatformException code when the build refuses it.
   Future<String?> useTestScenario(String? scenario) async {
     try {
