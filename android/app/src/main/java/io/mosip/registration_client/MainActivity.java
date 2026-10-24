@@ -409,6 +409,7 @@ public class MainActivity extends FlutterActivity {
         biometricsDetailsApi.setCallbackActivity(this);
         LivenessPigeon.LivenessApi.setup(flutterEngine.getDartExecutor().getBinaryMessenger(), livenessApi);
         livenessApi.setCallbackActivity(this);
+        biometricsDetailsApi.setFaceCaptureGuard(livenessApi::faceCaptureAllowed);
         RegistrationDataPigeon.RegistrationDataApi.setup(flutterEngine.getDartExecutor().getBinaryMessenger(), registrationApi);
         PacketAuthPigeon.PacketAuthApi.setup(flutterEngine.getDartExecutor().getBinaryMessenger(), packetAuthenticationApi);
         packetAuthenticationApi.setCallbackActivity(this);

@@ -2,6 +2,7 @@ package io.mosip.registration.livenessmanager.session;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.function.LongSupplier;
 
 import io.mosip.registration.liveness.api.Decision;
 import io.mosip.registration.liveness.api.LivenessErrorCode;
@@ -21,6 +22,18 @@ public final class LivenessSessionStore {
 
     private final Map<String, AttemptTracker> trackers = new HashMap<>();
     private final Map<String, LivenessResult> results = new HashMap<>();
+    /** When each field's last check passed, until a capture uses the pass. */
+    private final Map<String, Long> passedAtMs = new HashMap<>();
+    private final LongSupplier clockMs;
+
+    /** A store on the system clock; the app uses {@link #shared()}. */
+    public LivenessSessionStore() {
+        this(System::currentTimeMillis);
+    }
+
+    LivenessSessionStore(LongSupplier clockMs) {
+        this.clockMs = clockMs;
+    }
 
     /** @return the store shared by the activity and the Pigeon API */
     public static LivenessSessionStore shared() {
@@ -66,6 +79,11 @@ public final class LivenessSessionStore {
         int attempt = tracker.current();
         boolean retryAllowed = tracker.record(result);
         results.put(key, result);
+        if (result.finalState() == SessionState.PASSED) {
+            passedAtMs.put(key, clockMs.getAsLong());
+        } else {
+            passedAtMs.remove(key);
+        }
         return LivenessResultSummary.of(result, attempt, tracker.limit(), retryAllowed, diagnosticsEnabled);
     }
 
@@ -88,6 +106,20 @@ public final class LivenessSessionStore {
     }
 
     /**
+     * Uses the field's pass for one SBI capture, so a face capture can never run on a missing, failed, stale or
+     * already used liveness check (stopgap until the capture binder, B-07).
+     *
+     * @param workflow the {@code Workflow} name
+     * @param fieldId  the field
+     * @param maxAgeMs how old the pass may be
+     * @return true if the field's last check passed within {@code maxAgeMs} and the pass was not used yet
+     */
+    public synchronized boolean consumePass(String workflow, String fieldId, long maxAgeMs) {
+        Long passedAt = passedAtMs.remove(key(workflow, fieldId));
+        return passedAt != null && clockMs.getAsLong() - passedAt <= maxAgeMs;
+    }
+
+    /**
      * @param workflow the {@code Workflow} name
      * @param fieldId  the field
      * @return the last full result for the field, or null
@@ -106,6 +138,7 @@ public final class LivenessSessionStore {
         String key = key(workflow, fieldId);
         trackers.remove(key);
         results.remove(key);
+        passedAtMs.remove(key);
     }
 
     private static String key(String workflow, String fieldId) {

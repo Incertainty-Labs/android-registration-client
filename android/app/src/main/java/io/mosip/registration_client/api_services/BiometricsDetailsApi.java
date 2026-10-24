@@ -132,9 +132,28 @@ public class BiometricsDetailsApi implements BiometricsPigeon.BiometricsApi {
         this.activity = mainActivity;
     }
 
+    /** Whether a face may be captured for a field now; set by the liveness API (B-06). */
+    public interface FaceCaptureGuard {
+        boolean allows(String fieldId);
+    }
+
+    /** Allows every capture until the liveness API sets its guard. */
+    private FaceCaptureGuard faceCaptureGuard = fieldId -> true;
+
+    /** @param guard refuses a face capture that no fresh liveness pass covers (stopgap until the capture binder) */
+    public void setFaceCaptureGuard(FaceCaptureGuard guard) {
+        this.faceCaptureGuard = guard;
+    }
+
     @Override
     public void invokeDiscoverSbi(@NonNull String fieldId, @NonNull String modality,
             @NonNull BiometricsPigeon.Result<String> result) {
+        // The Flutter gate runs liveness first; this refuses any face capture path that skipped it (REG-SBI-121)
+        if (getModality(modality) == Modality.FACE && !faceCaptureGuard.allows(fieldId)) {
+            result.error(new BiometricsPigeon.FlutterError(SBIError.SBI_LIVENESS_REQUIRED.getErrorCode(),
+                    SBIError.SBI_LIVENESS_REQUIRED.getErrorMessage(), null));
+            return;
+        }
         // A capture already running keeps its modality and field; the new call is rejected (REG-SBI-119).
         if (!pendingCall.start(result)) {
             return;

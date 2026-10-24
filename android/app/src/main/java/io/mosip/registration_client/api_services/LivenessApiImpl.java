@@ -190,6 +190,26 @@ public class LivenessApiImpl implements LivenessPigeon.LivenessApi {
         result.success(null);
     }
 
+    /** How long a liveness pass covers the face capture that follows it. */
+    static final long PASS_MAX_AGE_MS = 120_000L;
+
+    /**
+     * Whether a face SBI capture may run for a field now: liveness is off for its workflow, or the field's last
+     * check passed within {@link #PASS_MAX_AGE_MS} and that pass is used for this capture. Stopgap until the
+     * capture binder (B-07) ties the capture to the live session.
+     *
+     * @param fieldId {@code operatorBiometrics} for operator onboarding; any other field is a resident's
+     * @return true if the capture may run
+     */
+    public boolean faceCaptureAllowed(String fieldId) {
+        Workflow workflow = "operatorBiometrics".equals(fieldId)
+                ? Workflow.OPERATOR_ONBOARDING : Workflow.RESIDENT_REGISTRATION;
+        if (!LivenessConfigLoader.load(config(), workflow).enabled()) {
+            return true;
+        }
+        return store.consumePass(workflow.name(), fieldId, PASS_MAX_AGE_MS);
+    }
+
     @Override
     public void authenticateWithFace(@NonNull String userId, @NonNull String workflow,
                                      @NonNull LivenessPigeon.Result<LivenessPigeon.AuthResultDto> result) {

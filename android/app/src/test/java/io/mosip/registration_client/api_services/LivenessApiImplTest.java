@@ -317,9 +317,44 @@ public class LivenessApiImplTest {
         assertEquals(Boolean.TRUE, dto.getRetryAllowed());
     }
 
+    @Test
+    public void tcAnd05_livenessOff_allowsTheFaceCapture() {
+        assertTrue(api(null).faceCaptureAllowed(FACE));
+    }
+
+    @Test
+    public void tcAnd06_noPass_refusesTheFaceCapture() {
+        assertFalse(api("enabled=true").faceCaptureAllowed(FACE));
+    }
+
+    @Test
+    public void tcAnd05_aPass_allowsOneFaceCapture() {
+        LivenessApiImpl api = api("enabled=true");
+        mappedWith(api, passed());
+
+        assertTrue(api.faceCaptureAllowed(FACE));
+        assertFalse(api.faceCaptureAllowed(FACE));
+    }
+
+    @Test
+    public void tcAnd09_operatorBiometrics_needAnOnboardingPass() {
+        LivenessApiImpl api = api("enabled=true");
+        mappedWith(api, passed());
+
+        assertFalse(api.faceCaptureAllowed("operatorBiometrics"));
+    }
+
     /** Runs one check whose activity returns [result], and gives the DTO Dart receives. */
     private LivenessPigeon.LivenessResultDto mapped(LivenessResult result, boolean diagnostics) {
-        LivenessApiImpl api = api("enabled=true");
+        return mappedWith(api("enabled=true"), result, diagnostics);
+    }
+
+    private LivenessPigeon.LivenessResultDto mappedWith(LivenessApiImpl api, LivenessResult result) {
+        return mappedWith(api, result, false);
+    }
+
+    private LivenessPigeon.LivenessResultDto mappedWith(LivenessApiImpl api, LivenessResult result,
+                                                        boolean diagnostics) {
         Reply<LivenessPigeon.LivenessResultDto> reply = new Reply<>();
         api.startLiveness(WORKFLOW, FACE, reply);
         api.onActivityResult(LivenessContract.REQUEST_CODE, Activity.RESULT_OK, LivenessContract.resultIntent(
