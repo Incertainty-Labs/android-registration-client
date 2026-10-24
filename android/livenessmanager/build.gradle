@@ -36,6 +36,10 @@ android {
         targetCompatibility JavaVersion.VERSION_21
     }
     buildToolsVersion buildToolsVersion
+    // ONNX models are read whole into memory for ModelRegistry's hash checks; store them uncompressed
+    androidResources {
+        noCompress 'onnx'
+    }
     testOptions {
         unitTests {
             // Robolectric tests read this module's strings and layouts
