@@ -21,7 +21,8 @@ public enum SBIError {
     SBI_DEDUPE_SDK_UNAVAILABLE("REG-SBI-117", "Deduplication is enabled but no SDK with MATCH support is available"),
     SBI_CANCELLED("REG-SBI-118", "Capture cancelled"),
     SBI_CAPTURE_IN_PROGRESS("REG-SBI-119", "Capture already in progress"),
-    SBI_CERTIFICATION_NOT_ACCEPTED("REG-SBI-120", "Device certification not accepted");
+    SBI_CERTIFICATION_NOT_ACCEPTED("REG-SBI-120", "Device certification not accepted"),
+    SBI_LIVENESS_REQUIRED("REG-SBI-121", "Face liveness check required before capture");
 
     SBIError(String errorCode, String errorMessage) {
         this.setErrorCode(errorCode);

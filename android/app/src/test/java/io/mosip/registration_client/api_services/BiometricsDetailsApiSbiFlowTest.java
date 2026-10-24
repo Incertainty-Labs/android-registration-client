@@ -109,6 +109,50 @@ public class BiometricsDetailsApiSbiFlowTest {
     }
 
     @Test
+    public void tcAnd06_faceWithoutALivenessPass_isRefusedWithoutStartingDiscovery() {
+        api.setFaceCaptureGuard(fieldId -> false);
+
+        api.invokeDiscoverSbi("individualBiometrics", "Face", result);
+
+        assertEquals("REG-SBI-121", errorCode());
+        verify(activity, never()).startActivityForResult(any(Intent.class), anyInt());
+    }
+
+    @Test
+    public void tcAnd05_faceWithALivenessPass_startsDiscovery() {
+        api.setFaceCaptureGuard(fieldId -> "individualBiometrics".equals(fieldId));
+
+        api.invokeDiscoverSbi("individualBiometrics", "Face", result);
+
+        verify(activity).startActivityForResult(any(Intent.class), eq(DISCOVER));
+    }
+
+    @Test
+    public void tcAnd05_aCaptureAlreadyRunning_doesNotUseUpTheLivenessPass() {
+        int[] consulted = {0};
+        api.setFaceCaptureGuard(fieldId -> ++consulted[0] > 0);
+        api.invokeDiscoverSbi("individualBiometrics", "Face", result);
+        @SuppressWarnings("unchecked")
+        BiometricsPigeon.Result<String> second = mock(BiometricsPigeon.Result.class);
+
+        api.invokeDiscoverSbi("individualBiometrics", "Face", second);
+
+        assertEquals(1, consulted[0]);
+        ArgumentCaptor<Throwable> error = ArgumentCaptor.forClass(Throwable.class);
+        verify(second).error(error.capture());
+        assertEquals("REG-SBI-119", ((BiometricsPigeon.FlutterError) error.getValue()).code);
+    }
+
+    @Test
+    public void tcAnd05_otherModalities_skipTheLivenessGuard() {
+        api.setFaceCaptureGuard(fieldId -> false);
+
+        api.invokeDiscoverSbi("individualBiometrics", "Iris", result);
+
+        verify(activity).startActivityForResult(any(Intent.class), eq(DISCOVER));
+    }
+
+    @Test
     public void tcAnd14_whenDiscoveryResponseIsInvalid_failsWithTheServiceErrorCode() throws Exception {
         when(biometricsService.handleDiscoveryResponse(any(), any()))
                 .thenThrow(new BiometricsServiceException("REG-SBI-114", "Discovery Failed! Invalid response"));

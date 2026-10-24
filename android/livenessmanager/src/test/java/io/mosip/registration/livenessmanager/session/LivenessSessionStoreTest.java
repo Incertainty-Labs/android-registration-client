@@ -117,6 +117,54 @@ public class LivenessSessionStoreTest {
         assertNull(store.limitReached(WORKFLOW, FACE));
     }
 
+    @Test
+    public void tcAnd05_freshPass_allowsOneCaptureOnly() {
+        long[] now = {1_000L};
+        LivenessSessionStore timed = new LivenessSessionStore(() -> now[0]);
+        timed.begin(WORKFLOW, FACE, policy(3), 0);
+        timed.complete(WORKFLOW, FACE, passed(), false);
+        now[0] += 5_000L;
+
+        assertTrue(timed.consumePass(WORKFLOW, FACE, 120_000L));
+        assertFalse(timed.consumePass(WORKFLOW, FACE, 120_000L));
+    }
+
+    @Test
+    public void tcAnd05_stalePass_allowsNoCapture() {
+        long[] now = {1_000L};
+        LivenessSessionStore timed = new LivenessSessionStore(() -> now[0]);
+        timed.begin(WORKFLOW, FACE, policy(3), 0);
+        timed.complete(WORKFLOW, FACE, passed(), false);
+        now[0] += 120_001L;
+
+        assertFalse(timed.consumePass(WORKFLOW, FACE, 120_000L));
+    }
+
+    @Test
+    public void tcAnd06_failure_allowsNoCapture() {
+        store.begin(WORKFLOW, FACE, policy(3), 0);
+        store.complete(WORKFLOW, FACE, challengeFailed(), false);
+
+        assertFalse(store.consumePass(WORKFLOW, FACE, 120_000L));
+    }
+
+    @Test
+    public void tcAnd06_noCheck_allowsNoCapture() {
+        assertFalse(store.consumePass(WORKFLOW, FACE, 120_000L));
+    }
+
+    @Test
+    public void tcAnd05_aNewPass_allowsTheNextCapture() {
+        store.begin(WORKFLOW, FACE, policy(3), 0);
+        store.complete(WORKFLOW, FACE, passed(), false);
+        store.consumePass(WORKFLOW, FACE, 120_000L);
+
+        store.begin(WORKFLOW, FACE, policy(3), 0);
+        store.complete(WORKFLOW, FACE, passed(), false);
+
+        assertTrue(store.consumePass(WORKFLOW, FACE, 120_000L));
+    }
+
     @Test(expected = IllegalStateException.class)
     public void tcAnd_completeWithoutBegin_isRejected() {
         store.complete(WORKFLOW, FACE, passed(), false);
