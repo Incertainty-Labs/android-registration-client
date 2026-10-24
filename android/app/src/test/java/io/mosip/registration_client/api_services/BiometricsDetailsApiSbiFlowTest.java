@@ -36,6 +36,7 @@ import io.mosip.registration_client.MainActivity;
 import io.mosip.registration_client.model.BiometricsPigeon;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -301,14 +302,49 @@ public class BiometricsDetailsApiSbiFlowTest {
         verify(result, never()).error(any(Throwable.class));
     }
 
+    @Test
+    public void tcAnd10_operatorAuthCapture_isHeldAndNeverTouchesTheRegistration() throws Exception {
+        OperatorAuthCapture held = new OperatorAuthCapture();
+        api.setOperatorAuthCapture(held);
+        BiometricsDto face = new BiometricsDto();
+        when(biometricsService.handleRCaptureResponse(any(), any(), any(), eq("TXN-1"), eq(false)))
+                .thenReturn(new ArrayList<>(Collections.singletonList(face)));
+        startCaptureFlow("operatorAuth");
+
+        api.onSbiActivityResult(CAPTURE, Activity.RESULT_OK, captureResponse());
+
+        verify(result, times(1)).success("Ok");
+        verify(registrationService, never()).getRegistrationDto();
+        assertEquals(Collections.singletonList(face), held.take());
+        assertTrue("a held capture is used once", held.take().isEmpty());
+    }
+
+    @Test
+    public void tcAnd10_operatorAuthCaptureWithoutAFace_failsAndHoldsNothing() throws Exception {
+        OperatorAuthCapture held = new OperatorAuthCapture();
+        api.setOperatorAuthCapture(held);
+        when(biometricsService.handleRCaptureResponse(any(), any(), any(), any(), anyBoolean()))
+                .thenReturn(new ArrayList<>());
+        startCaptureFlow("operatorAuth");
+
+        api.onSbiActivityResult(CAPTURE, Activity.RESULT_OK, captureResponse());
+
+        assertEquals("REG-SBI-115", errorCode());
+        assertTrue(held.take().isEmpty());
+    }
+
     /** Discovery and device info succeed, so the next activity result is the capture's. */
     private void startCaptureFlow() throws Exception {
         when(registrationService.getRegistrationDto()).thenReturn(mock(RegistrationDto.class));
+        startCaptureFlow("individualBiometrics");
+    }
+
+    private void startCaptureFlow(String fieldId) throws Exception {
         when(activity.getContentResolver()).thenReturn(RuntimeEnvironment.getApplication().getContentResolver());
         when(biometricsService.handleDiscoveryResponse(any(), any())).thenReturn("io.sbi.face");
         when(biometricsService.handleDeviceInfoResponse(any(), any()))
                 .thenReturn(new String[] {"io.sbi.face", "SN-1", "Ready"});
-        api.invokeDiscoverSbi("individualBiometrics", "Face", result);
+        api.invokeDiscoverSbi(fieldId, "Face", result);
         api.onSbiActivityResult(DISCOVER, Activity.RESULT_OK, sbiResponse());
         api.onSbiActivityResult(DEVICE_INFO, Activity.RESULT_OK, sbiResponse());
     }

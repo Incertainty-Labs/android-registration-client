@@ -137,6 +137,14 @@ public class BiometricsDetailsApi implements BiometricsPigeon.BiometricsApi {
         boolean allows(String fieldId);
     }
 
+    /** Holds an operatorAuth capture outside the registration; replaced by the app's singleton in MainActivity. */
+    private OperatorAuthCapture operatorAuthCapture = new OperatorAuthCapture();
+
+    /** @param capture where operator and supervisor face authentication captures are held (B-09) */
+    public void setOperatorAuthCapture(OperatorAuthCapture capture) {
+        this.operatorAuthCapture = capture;
+    }
+
     /** Allows every capture until the liveness API sets its guard. */
     private FaceCaptureGuard faceCaptureGuard = fieldId -> true;
 
@@ -1040,6 +1048,9 @@ public class BiometricsDetailsApi implements BiometricsPigeon.BiometricsApi {
                     getExceptionAttributes());
             if (fieldId.equals(OPERATOR_BIOMETRICS)) {
                 userOnboardService.setCaptureTransactionId(captureRequest.getTransactionId());
+            } else if (fieldId.equals(OperatorAuthCapture.FIELD_ID)) {
+                // An authenticating operator's face never goes into the resident's registration
+                operatorAuthCapture.begin(captureRequest.getTransactionId());
             } else {
                 registrationService.getRegistrationDto().setCaptureTransactionId(captureRequest.getTransactionId());
             }
@@ -1162,11 +1173,22 @@ public class BiometricsDetailsApi implements BiometricsPigeon.BiometricsApi {
             Uri uri = bundle.getParcelable(RegistrationConstants.SBI_INTENT_RESPONSE_KEY);
             InputStream respData = activity.getContentResolver().openInputStream(uri);
             boolean isOperatorOnboarding = fieldId.equals(OPERATOR_BIOMETRICS);
-            String transactionId = isOperatorOnboarding
-                    ? userOnboardService.getCaptureTransactionId()
+            boolean isOperatorAuth = fieldId.equals(OperatorAuthCapture.FIELD_ID);
+            String transactionId = isOperatorOnboarding ? userOnboardService.getCaptureTransactionId()
+                    : isOperatorAuth ? operatorAuthCapture.transactionId()
                     : registrationService.getRegistrationDto().getCaptureTransactionId();
             List<BiometricsDto> biometricsDtoList = biometricsService.handleRCaptureResponse(currentModality, respData,
                     getExceptionAttributes(), transactionId, isOperatorOnboarding);
+            if (isOperatorAuth) {
+                if (biometricsDtoList.isEmpty()) {
+                    pendingCall.fail(SBIError.SBI_RCAPTURE_ERROR.getErrorCode(),
+                            "No face captured. Please try again.");
+                    return;
+                }
+                operatorAuthCapture.hold(biometricsDtoList);
+                pendingCall.complete("Ok");
+                return;
+            }
             // if attempts is zero, there is no need to maintain the counter
             if (fieldId.equals(OPERATOR_BIOMETRICS)) {
                 removeDuplicatesFromOperatorBiometricList(currentModality);
@@ -1230,6 +1252,10 @@ public class BiometricsDetailsApi implements BiometricsPigeon.BiometricsApi {
     }
 
     private List<String> getExceptionAttributes() {
+        if (OperatorAuthCapture.FIELD_ID.equals(fieldId)) {
+            // An authenticating face has no exceptions, and there may be no registration at all
+            return new ArrayList<>();
+        }
         return currentModality.getAttributes().stream()
                 .filter(it -> {
                     try {
