@@ -13,6 +13,13 @@ abstract class LivenessService {
   /// Clears the attempt counter for a field, e.g. for a new registration.
   Future<void> resetAttempts(String workflow, String fieldId);
 
+  /// Matches the face just captured under operatorAuth against [userId]'s templates (B-09). Run the liveness check
+  /// and the SBI capture first; without a fresh liveness pass it is never authenticated.
+  Future<AuthResultDto> authenticateWithFace(String userId, String workflow);
+
+  /// Test screen only (B-21 seed): saves the face just captured under operatorAuth as [userId]'s face template.
+  Future<void> seedFaceTemplate(String userId);
+
   /// Test screen only (B-21): config overrides for the next checks, e.g. "stub.force=PAD"; "" clears them.
   Future<void> setTestOverrides(String overrides);
 

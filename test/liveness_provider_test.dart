@@ -20,6 +20,10 @@ class FakeLivenessService implements LivenessService {
   Object? resetError;
   String? testOverrides;
   Object? testOverridesError;
+  AuthResultDto authResult = AuthResultDto(authenticated: true);
+  final List<String> authCalls = [];
+  final List<String> seeded = [];
+  Object? seedError;
 
   @override
   Future<Map<String?, String?>> getLivenessConfig(String workflow) async {
@@ -45,6 +49,18 @@ class FakeLivenessService implements LivenessService {
   Future<void> resetAttempts(String workflow, String fieldId) async {
     if (resetError != null) throw resetError!;
     resets.add('$workflow/$fieldId');
+  }
+
+  @override
+  Future<AuthResultDto> authenticateWithFace(String userId, String workflow) async {
+    authCalls.add('$workflow/$userId');
+    return authResult;
+  }
+
+  @override
+  Future<void> seedFaceTemplate(String userId) async {
+    if (seedError != null) throw seedError!;
+    seeded.add(userId);
   }
 
   @override

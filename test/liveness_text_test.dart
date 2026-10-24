@@ -57,6 +57,10 @@ void main() {
       ['liveness.permission.title', 'Camera access needed'],
       ['liveness.permission.body', 'The camera is used only to check that a real person is present. No video is saved.'],
       ['liveness.offline.announce', 'Working offline'],
+      ['liveness.auth.no_match', 'Face does not match. Try again or use your password.'],
+      ['liveness.auth.no_template', 'No face is enrolled for this user. Use your password or contact your administrator.'],
+      ['liveness.auth.unavailable', 'Face authentication is not available. Use your password.'],
+      ['liveness.auth.no_capture', 'No face was captured. Please try again.'],
     ];
     for (final row in english) {
       expect(livenessText(l10n, row[0], const [1, 3]), row[1], reason: row[0]);

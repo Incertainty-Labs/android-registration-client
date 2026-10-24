@@ -99,6 +99,26 @@ class LivenessProvider with ChangeNotifier {
     }
   }
 
+  /// Matches the face just captured under operatorAuth (B-09). Returns null when the native side refused the call.
+  Future<AuthResultDto?> authenticateWithFace(String userId, String workflow) async {
+    try {
+      return await _service.authenticateWithFace(userId, workflow);
+    } on PlatformException {
+      return null;
+    }
+  }
+
+  /// Test screen only (B-21 seed): saves the face just captured under operatorAuth as [userId]'s face template.
+  /// Returns null, or the PlatformException code when it was refused or nothing was captured.
+  Future<String?> seedFaceTemplate(String userId) async {
+    try {
+      await _service.seedFaceTemplate(userId);
+      return null;
+    } on PlatformException catch (e) {
+      return e.code;
+    }
+  }
+
   /// Test screen only: removes the screen's overrides, so later real checks run with the build's config.
   Future<void> clearTestOverrides() async {
     try {
