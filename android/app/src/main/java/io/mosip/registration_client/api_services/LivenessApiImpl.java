@@ -58,6 +58,7 @@ public class LivenessApiImpl implements LivenessPigeon.LivenessApi {
     private static final String TAG = LivenessApiImpl.class.getSimpleName();
     private static final String SYNCED_PATTERN = LivenessConfigLoader.PREFIX + "%";
     private static final String DIAGNOSTICS_KEY = LivenessConfigLoader.PREFIX + "diagnostics.enabled";
+    private static final String STUB_FORCE_KEY = LivenessConfigLoader.PREFIX + "stub.force";
 
     private final GlobalParamRepository globalParamRepository;
     private final LocalConfigService localConfigService;
@@ -264,6 +265,21 @@ public class LivenessApiImpl implements LivenessPigeon.LivenessApi {
     }
 
     /**
+     * Whether the resident's exception photo may be taken for a field now: liveness is off for
+     * {@code RESIDENT_EXCEPTION_PHOTO}, or the field's last passive check passed within {@link #PASS_MAX_AGE_MS}
+     * and that pass is used for this photo (B-07). A face pass does not cover it.
+     *
+     * @param fieldId the resident's biometrics field
+     * @return true if the photo may be taken
+     */
+    public boolean exceptionPhotoAllowed(String fieldId) {
+        if (!LivenessConfigLoader.load(config(), Workflow.RESIDENT_EXCEPTION_PHOTO).enabled()) {
+            return true;
+        }
+        return store.consumePass(Workflow.RESIDENT_EXCEPTION_PHOTO.name(), fieldId, PASS_MAX_AGE_MS);
+    }
+
+    /**
      * Matches the face just captured under {@code operatorAuth} against the user's templates (B-09, API.md §15).
      * The liveness check and the SBI capture run first, from Flutter; this needs the workflow's fresh, unused
      * liveness pass for {@code operatorAuth}, so a face is never matched without a live check. Fails closed: liveness
@@ -365,7 +381,13 @@ public class LivenessApiImpl implements LivenessPigeon.LivenessApi {
         if (local != null) {
             settings.putAll(local);
         }
-        return LivenessSettings.merge(settings, (overrides == null ? "" : overrides) + ";" + testOverrides);
+        Map<String, String> merged = LivenessSettings.merge(settings,
+                (overrides == null ? "" : overrides) + ";" + testOverrides);
+        if (!LivenessSettings.merge(new HashMap<>(), testOverrides).containsKey(STUB_FORCE_KEY)) {
+            // Only the test screen may play a scripted stub scenario; every other check runs the real engine
+            merged.remove(STUB_FORCE_KEY);
+        }
+        return merged;
     }
 
     private static int clientRetryLimit(Map<String, String> config) {

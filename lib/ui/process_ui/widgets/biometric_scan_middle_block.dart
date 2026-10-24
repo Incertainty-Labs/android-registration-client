@@ -282,6 +282,8 @@ class _BiometricScanMiddleBlockState extends State<BiometricScanMiddleBlock> {
     (widget.biometricAttributeData.exceptions.contains(false))
         ? true
         : generateList("${widget.field.id}", widget.biometricAttributeData);
+    final livenessWorkflow = LivenessGate(context.read<LivenessProvider>())
+        .workflowFor(widget.parameterTitle);
     return SizedBox(
       height: 460.h,
       child: Column(
@@ -307,14 +309,14 @@ class _BiometricScanMiddleBlockState extends State<BiometricScanMiddleBlock> {
                     ),
                   ],
                 ),
-          if (widget.parameterTitle == LivenessGate.faceModality)
-            LivenessResultCard(fieldId: widget.field.id!),
+          if (livenessWorkflow != null)
+            LivenessResultCard(fieldId: widget.field.id!, workflow: livenessWorkflow),
           OutlinedButton.icon(
-            // S12: once the face's liveness attempts are used up, the face cannot be captured
-            onPressed: widget.parameterTitle == LivenessGate.faceModality &&
+            // S12: once the liveness attempts are used up, the face or exception photo cannot be captured
+            onPressed: livenessWorkflow != null &&
                     context
                         .watch<LivenessProvider>()
-                        .blockedFor(LivenessGate.residentWorkflow, widget.field.id!)
+                        .blockedFor(livenessWorkflow, widget.field.id!)
                 ? null
                 : () async {
               if (widget.biometricAttributeData.exceptions.contains(false)) {
