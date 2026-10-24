@@ -46,6 +46,14 @@ These go in `android/local.properties`, which is not in git, or are passed with 
 
 **Never set these flags for a build used in the field.**
 
+## Configuration, audit and packet evidence (B-12)
+
+- **Config:** every API.md §5 key is read from the synced `mosip.registration.face.liveness.*` global params, then the operator's local preferences, then the build overrides, into `LivenessConfigLoader` (`LivenessApiImpl.config()`).
+- **Settings tab:** the Global Config Settings tab lists only keys the server permits (`permitted_local_config`, filled by the master data sync, which also deletes local values for keys it did not send). To let operators change liveness keys there, MOSIP adds them to that server list; ARC does not add them on its own, because the next sync would undo it.
+- **Audit:** the API.md §8 events are `AuditEvent` REG-EVT-115 to 125 (`LivenessAudit`).
+- **Packet:** a resident's face BIR carries the API.md §9 keys of the field's passed check (`LivenessPacketEvidence`, built with `PacketEvidence.of`).
+- **`BiometricsDto` has no liveness fields:** the evidence travels natively through `LivenessSessionStore`, and Flutter has `LivenessResultDto`. Adding fields would break MOSIP's positional `BiometricsDto` constructor calls for no use.
+
 ## Known limitations
 
 - **Attempt counters are kept in memory** (`LivenessSessionStore`). Restarting the app gives a fresh set of attempts, which weakens the max-retries limit (LIV-011) against someone who restarts the app on purpose. The fix is to persist the counters in the app's database; this is planned, not done.
