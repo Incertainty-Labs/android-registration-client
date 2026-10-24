@@ -5,6 +5,8 @@ import java.util.List;
 
 import javax.inject.Inject;
 
+import io.mosip.kernel.biometrics.constant.BiometricType;
+
 import io.mosip.registration.clientmanager.constant.Modality;
 import io.mosip.registration.clientmanager.constant.RegistrationConstants;
 import io.mosip.registration.clientmanager.dao.UserBiometricDao;
@@ -67,6 +69,23 @@ public class UserBiometricRepository {
      */
     public List<UserBiometric> findAllOperatorBiometricsExceptCurrent(String biometricType, String userId){
         return userBiometricDao.findAllOtherUsersByBiometricType(biometricType, userId);
+    }
+
+    /**
+     * The user's face templates from onboarding, for 1:1 face authentication (B-09).
+     *
+     * @param userId the operator or supervisor
+     * @return the user's FACE templates; empty when none
+     */
+    public List<UserBiometric> findFaceTemplates(String userId) {
+        List<UserBiometric> faces = new ArrayList<>();
+        for (UserBiometric biometric : userBiometricDao.findByUsrId(userId)) {
+            if (BiometricType.FACE.value().equalsIgnoreCase(biometric.getBioTypeCode())
+                    && !Boolean.TRUE.equals(biometric.getIsDeleted())) {
+                faces.add(biometric);
+            }
+        }
+        return faces;
     }
 
     public String saveOnboardStatus(String userId) {
