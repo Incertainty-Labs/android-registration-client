@@ -57,6 +57,14 @@ public final class AssetModelLoader implements EngineHolder.Loader {
 
     @Override
     public LivenessEngine load() throws LivenessException {
+        return LivenessEngines.hybrid(registry(), EngineOptions.defaults());
+    }
+
+    /**
+     * @return the shipped bundle, every file checked against {@code models.json}
+     * @throws LivenessException LIV-013 if a file is missing, unreadable or altered
+     */
+    ModelRegistry registry() throws LivenessException {
         String manifest;
         Map<String, byte[]> files = new HashMap<>();
         try {
@@ -72,8 +80,7 @@ public final class AssetModelLoader implements EngineHolder.Loader {
         } catch (IOException e) {
             throw new LivenessException(LivenessErrorCode.ENGINE_ERROR, "Model bundle unreadable: " + e.getMessage());
         }
-        ModelRegistry registry = ModelRegistry.load(files, manifest);
-        return LivenessEngines.hybrid(registry, EngineOptions.defaults());
+        return ModelRegistry.load(files, manifest);
     }
 
     private static byte[] readAll(InputStream in) throws IOException {
