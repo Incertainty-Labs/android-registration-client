@@ -34,6 +34,7 @@ import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.TreeMap;
@@ -41,6 +42,10 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
 import io.mosip.registration.liveness.api.SessionState;
+import io.mosip.registration.liveness.api.LivenessErrorCode;
+import io.mosip.registration.liveness.api.LivenessException;
+import io.mosip.registration.liveness.engine.LivenessEngines;
+import io.mosip.registration.livenessmanager.engine.EngineHolder;
 import io.mosip.registration.livenessmanager.camera.CameraXFrameSource;
 import io.mosip.registration.livenessmanager.result.LivenessResultSummary;
 import io.mosip.registration.livenessmanager.session.LivenessSessionStore;
@@ -72,12 +77,14 @@ public class LivenessActivityTest {
         Shadows.shadowOf(app).grantPermissions(Manifest.permission.CAMERA);
         binder = new FakeBinder();
         LivenessActivity.binderFactory = (activity, preview) -> binder;
+        LivenessActivity.engines = EngineHolder.shared();
         LivenessSessionStore.shared().reset(WORKFLOW, FACE);
     }
 
     @After
     public void tearDown() {
         LivenessActivity.binderFactory = LivenessActivity.CAMERAX_BINDER;
+        LivenessActivity.engines = EngineHolder.shared();
         LivenessSessionStore.shared().reset(WORKFLOW, FACE);
     }
 
@@ -343,6 +350,53 @@ public class LivenessActivityTest {
     }
 
     @Test
+    public void tcEng_withoutAForcedScenario_usesTheAppsEngine() {
+        EngineHolder holder = new EngineHolder();
+        holder.start(Runnable::run, () -> LivenessEngines.stub(
+                Collections.singletonMap("mosip.registration.face.liveness.stub.force", "PASS_PASSIVE")));
+        LivenessActivity.engines = holder;
+        LivenessActivity activity = launch(null).get();
+
+        runUntilResult();
+        Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(LivenessActivity.FINAL_SCREEN_MS));
+
+        assertEquals("PASSED", result(activity).finalState());
+    }
+
+    @Test
+    public void tcEng_engineStillLoading_startsTheSessionOnceReady() {
+        java.util.List<Runnable> loading = new java.util.ArrayList<>();
+        EngineHolder holder = new EngineHolder();
+        holder.start(loading::add, () -> LivenessEngines.stub(Collections.emptyMap()));
+        LivenessActivity.engines = holder;
+        launch(null).get();
+        assertNull("camera bound before the engine", binder.analyzer);
+
+        loading.remove(0).run();
+        Shadows.shadowOf(Looper.getMainLooper()).idle();
+
+        assertNotNull("camera not bound", binder.analyzer);
+    }
+
+    @Test
+    public void tcEng_engineThatFailsToLoad_offersOnlyCloseAndReturnsLiv013() {
+        EngineHolder holder = new EngineHolder();
+        holder.start(Runnable::run, () -> {
+            throw new LivenessException(LivenessErrorCode.ENGINE_ERROR, "model hash mismatch");
+        });
+        LivenessActivity.engines = holder;
+        LivenessActivity activity = launch(null).get();
+        Shadows.shadowOf(Looper.getMainLooper()).idle();
+
+        assertEquals(View.VISIBLE, activity.findViewById(R.id.liveness_close).getVisibility());
+        assertNull("camera bound without an engine", binder.analyzer);
+        activity.findViewById(R.id.liveness_close).performClick();
+        LivenessResultSummary summary = result(activity);
+        assertEquals("ERROR", summary.finalState());
+        assertEquals("LIV-013", summary.errorCode());
+    }
+
+    @Test
     public void tcAnd_requestWithoutWorkflow_finishesWithoutAResult() {
         Intent intent = new Intent(app, LivenessActivity.class);
 
@@ -363,7 +417,9 @@ public class LivenessActivityTest {
         if (maxRetries != null) {
             config.put("mosip.registration.face.liveness.max.retries", maxRetries);
         }
-        config.put("mosip.registration.face.liveness.stub.force", scenario);
+        if (scenario != null) {
+            config.put("mosip.registration.face.liveness.stub.force", scenario);
+        }
         Intent intent = LivenessContract.createIntent(app,
                 new LivenessContract.Request(WORKFLOW, FACE, 1, config));
         return Robolectric.buildActivity(LivenessActivity.class, intent).setup();
