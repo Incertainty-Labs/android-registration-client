@@ -36,3 +36,11 @@ adb shell am instrument -w -r io.mosip.registration.livenessmanager.test/android
 (On the old `develop` base, AGP 7.2's `connectedDebugAndroidTest` reported 0 tests on Android 15; `am instrument` was the workaround.)
 
 The face test needs a consented photo at `src/androidTest/assets/consented/b-selfie.jpg` and is skipped without one; photos are never committed ([CONSENT.md](src/androidTest/CONSENT.md)).
+
+## Build flags (demo and test builds only)
+
+These go in `android/local.properties`, which is not in git, or are passed with `-P`.
+
+- `mosip.liveness.overrides`: liveness config pairs separated by `;`, for example `enabled=true;stub.force=PAD`. A key that doesn't start with `mosip.` gets the `mosip.registration.face.liveness.` prefix. They are applied after the synced config and the local preferences, so they win. Release builds honour them too, so a demo APK can turn liveness on while the server leaves it off. The app logs a warning when any are set.
+
+**Never set these flags for a build used in the field.**
