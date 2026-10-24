@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:registration_client/pigeon/liveness_pigeon.dart';
 import 'package:registration_client/provider/liveness_provider.dart';
+import 'package:registration_client/utils/face_auth.dart';
 
 /// The liveness workflows (liveness-core `Workflow`).
 const livenessTestWorkflows = [
@@ -51,7 +53,10 @@ class LivenessTestEntry extends StatelessWidget {
 /// Developer screen (B-21): runs a liveness check for any workflow and shows the full result, without login.
 /// English only; it is not part of the product UI.
 class LivenessTestPage extends StatefulWidget {
-  const LivenessTestPage({super.key});
+  const LivenessTestPage({super.key, this.seedCapture});
+
+  /// The SBI face capture for seeding; the real one by default, replaced in tests.
+  final Future<void> Function()? seedCapture;
 
   @override
   State<LivenessTestPage> createState() => _LivenessTestPageState();
@@ -66,6 +71,11 @@ class _LivenessTestPageState extends State<LivenessTestPage> {
   final TextEditingController field = TextEditingController(text: testField);
   Map<String?, String?> hints = {};
   late final LivenessProvider _provider;
+
+  final TextEditingController seedUser = TextEditingController();
+
+  /// The outcome of the last seed: a confirmation, or the refusal code.
+  String? seedOutcome;
 
   /// The workflow/field pairs this screen ran, so their attempts are reset when it closes.
   final Set<MapEntry<String, String>> _ran = {};
@@ -89,6 +99,7 @@ class _LivenessTestPageState extends State<LivenessTestPage> {
       _provider.resetAttempts(pair.key, pair.value);
     }
     field.dispose();
+    seedUser.dispose();
     super.dispose();
   }
 
@@ -108,6 +119,22 @@ class _LivenessTestPageState extends State<LivenessTestPage> {
       _loadHints();
       _ran.add(MapEntry(workflow, field.text));
       await _provider.start(workflow, field.text);
+    }
+  }
+
+  /// R2 seed: captures a face through the SBI and saves it as the user's face template, so face authentication
+  /// can be shown without online onboarding.
+  Future<void> _seed() async {
+    final userId = seedUser.text.trim();
+    try {
+      await (widget.seedCapture ?? () => FaceAuth.captureOperatorFace())();
+    } catch (e) {
+      setState(() => seedOutcome = e is PlatformException ? e.code : e.toString());
+      return;
+    }
+    final code = await _provider.seedFaceTemplate(userId);
+    if (mounted) {
+      setState(() => seedOutcome = code ?? 'Face template saved for $userId');
     }
   }
 
@@ -165,6 +192,20 @@ class _LivenessTestPageState extends State<LivenessTestPage> {
         if (provider.status == LivenessStatus.checking) const Text('Checking…'),
         if (error != null) _section(context, 'Error', {'code': error}),
         if (refused == null && result != null) _section(context, 'Result', _resultRows(result)),
+        const Divider(),
+        Text('Seed face template (debug, R2)', style: Theme.of(context).textTheme.titleMedium),
+        TextField(
+          key: const Key('liveness-test-seed-user'),
+          controller: seedUser,
+          decoration: const InputDecoration(labelText: 'User id'),
+        ),
+        const SizedBox(height: 8),
+        OutlinedButton(
+          key: const Key('liveness-test-seed'),
+          onPressed: _seed,
+          child: const Text('Capture face and save as template'),
+        ),
+        if (seedOutcome != null) Text(seedOutcome!),
       ],
     );
   }

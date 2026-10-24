@@ -6,11 +6,18 @@ import android.util.Log;
 
 import androidx.annotation.NonNull;
 
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import javax.inject.Singleton;
 
+import io.mosip.registration.clientmanager.constant.AuditEvent;
+import io.mosip.registration.clientmanager.constant.Components;
+import io.mosip.registration.clientmanager.dto.registration.BiometricsDto;
+import io.mosip.registration.clientmanager.service.FaceAuthService;
+import io.mosip.registration.clientmanager.spi.AuditManagerService;
 import io.mosip.registration.clientmanager.repository.GlobalParamRepository;
 import io.mosip.registration.clientmanager.spi.LocalConfigService;
 import io.mosip.registration.liveness.api.Decision;
@@ -39,6 +46,14 @@ public class LivenessApiImpl implements LivenessPigeon.LivenessApi {
     static final String LIVENESS_START_FAILED = "LIVENESS_START_FAILED";
     static final String NOT_IMPLEMENTED = "NOT_IMPLEMENTED";
     static final String TEST_OVERRIDES_NOT_ALLOWED = "TEST_OVERRIDES_NOT_ALLOWED";
+    static final String LIVENESS_REQUIRED = "LIVENESS_REQUIRED";
+    static final String FACE_AUTH_NOT_ALLOWED = "FACE_AUTH_NOT_ALLOWED";
+
+    /**
+     * How long a liveness pass covers the face authentication that follows it: the pass, the capture and the match
+     * happen within seconds, so the window is short to narrow a face swap between them.
+     */
+    static final long AUTH_PASS_MAX_AGE_MS = 30_000L;
 
     private static final String TAG = LivenessApiImpl.class.getSimpleName();
     private static final String SYNCED_PATTERN = LivenessConfigLoader.PREFIX + "%";
@@ -52,6 +67,11 @@ public class LivenessApiImpl implements LivenessPigeon.LivenessApi {
     private String testOverrides = "";
     private final LivenessSessionStore store = LivenessSessionStore.shared();
     private Activity activity;
+
+    /** Operator and supervisor face authentication (B-09); null until {@link #setFaceAuth}. */
+    private FaceAuthService faceAuthService;
+    private OperatorAuthCapture operatorAuthCapture;
+    private AuditManagerService auditManagerService;
 
     /** The Dart call waiting for {@code LivenessActivity}; null when none. */
     private Pending pending;
@@ -74,6 +94,17 @@ public class LivenessApiImpl implements LivenessPigeon.LivenessApi {
         if (overrides != null && !overrides.trim().isEmpty()) {
             Log.w(TAG, "Liveness config overrides are set in this build: " + overrides);
         }
+    }
+
+    /**
+     * @param faceAuth the 1:1 face matcher
+     * @param capture  where the authenticating face is held after its SBI capture
+     * @param audit    records each face authentication
+     */
+    public void setFaceAuth(FaceAuthService faceAuth, OperatorAuthCapture capture, AuditManagerService audit) {
+        this.faceAuthService = faceAuth;
+        this.operatorAuthCapture = capture;
+        this.auditManagerService = audit;
     }
 
     /** @param activity starts {@code LivenessActivity} and passes its result to {@link #onActivityResult} */
@@ -162,6 +193,9 @@ public class LivenessApiImpl implements LivenessPigeon.LivenessApi {
             hints.put("onMaxRetries", policy.onMaxRetries().name());
             hints.put("activeEnabled", String.valueOf(policy.activeEnabled()));
             hints.put("testScreen", String.valueOf(testScreen));
+            // Until B-07 binds the matched face to the live session, face auth is offered in test-screen builds only
+            hints.put("faceAuthAvailable",
+                    String.valueOf(testScreen && faceAuthService != null && faceAuthService.isAvailable()));
             result.success(hints);
         } catch (IllegalArgumentException e) {
             result.error(error(LIVENESS_BAD_REQUEST, "Unknown workflow " + workflow));
@@ -202,6 +236,10 @@ public class LivenessApiImpl implements LivenessPigeon.LivenessApi {
      * @return true if the capture may run
      */
     public boolean faceCaptureAllowed(String fieldId) {
+        if (OperatorAuthCapture.FIELD_ID.equals(fieldId)) {
+            // Its workflow is known only at the match, which uses the pass itself (authenticateWithFace)
+            return true;
+        }
         Workflow workflow = "operatorBiometrics".equals(fieldId)
                 ? Workflow.OPERATOR_ONBOARDING : Workflow.RESIDENT_REGISTRATION;
         if (!LivenessConfigLoader.load(config(), workflow).enabled()) {
@@ -210,10 +248,92 @@ public class LivenessApiImpl implements LivenessPigeon.LivenessApi {
         return store.consumePass(workflow.name(), fieldId, PASS_MAX_AGE_MS);
     }
 
+    /**
+     * Matches the face just captured under {@code operatorAuth} against the user's templates (B-09, API.md §15).
+     * The liveness check and the SBI capture run first, from Flutter; this needs the workflow's fresh, unused
+     * liveness pass for {@code operatorAuth}, so a face is never matched without a live check. Fails closed: liveness
+     * off, no pass, no capture, no template or no matcher is never authenticated.
+     */
     @Override
     public void authenticateWithFace(@NonNull String userId, @NonNull String workflow,
                                      @NonNull LivenessPigeon.Result<LivenessPigeon.AuthResultDto> result) {
-        result.error(error(NOT_IMPLEMENTED, "Face authentication comes with B-09"));
+        Workflow parsed;
+        try {
+            parsed = Workflow.valueOf(workflow);
+        } catch (IllegalArgumentException e) {
+            result.error(error(LIVENESS_BAD_REQUEST, "Unknown workflow " + workflow));
+            return;
+        }
+        List<BiometricsDto> capture = operatorAuthCapture == null ? Collections.emptyList()
+                : operatorAuthCapture.take();
+        String errorCode;
+        String messageKey;
+        if (!testScreen) {
+            // Until B-07, the matched face is not bound to the live session, so no field build authenticates by face
+            errorCode = FACE_AUTH_NOT_ALLOWED;
+            messageKey = "liveness.auth.unavailable";
+        } else if (!LivenessConfigLoader.load(config(), parsed).enabled()) {
+            errorCode = LIVENESS_DISABLED;
+            messageKey = "liveness.auth.unavailable";
+        } else if (!store.consumePass(workflow, OperatorAuthCapture.FIELD_ID, AUTH_PASS_MAX_AGE_MS)) {
+            errorCode = LIVENESS_REQUIRED;
+            messageKey = "liveness.fail.try_again";
+        } else if (faceAuthService == null) {
+            errorCode = "FACE_NO_PROVIDER";
+            messageKey = "liveness.auth.unavailable";
+        } else {
+            FaceAuthService.Outcome outcome = faceAuthService.authenticate(userId, capture);
+            errorCode = outcome == FaceAuthService.Outcome.MATCHED ? null : "FACE_" + outcome.name();
+            messageKey = authMessageKey(outcome);
+        }
+        boolean authenticated = errorCode == null;
+        if (auditManagerService != null) {
+            auditManagerService.audit(authenticated ? AuditEvent.CREATE_PACKET_AUTH : AuditEvent.CREATE_PACKET_AUTH_FAILED,
+                    Components.REGISTRATION, "Face authentication " + workflow + " for user " + userId + ": "
+                            + (authenticated ? "matched" : errorCode));
+        }
+        result.success(new LivenessPigeon.AuthResultDto.Builder()
+                .setAuthenticated(authenticated)
+                .setErrorCode(errorCode)
+                .setMessageKey(messageKey)
+                .build());
+    }
+
+    @Override
+    public void seedFaceTemplate(@NonNull String userId, @NonNull LivenessPigeon.Result<Void> result) {
+        if (!testScreen) {
+            result.error(error(TEST_OVERRIDES_NOT_ALLOWED, "This build has no liveness test screen"));
+            return;
+        }
+        List<BiometricsDto> capture = operatorAuthCapture == null ? Collections.emptyList()
+                : operatorAuthCapture.take();
+        FaceAuthService.SeedOutcome seeded = faceAuthService == null ? FaceAuthService.SeedOutcome.NO_CAPTURE
+                : faceAuthService.seedTemplate(userId, capture);
+        if (seeded == FaceAuthService.SeedOutcome.ENROLLED) {
+            result.error(error("FACE_ALREADY_ENROLLED", "The user has an onboarded face template; not replaced"));
+            return;
+        }
+        if (seeded != FaceAuthService.SeedOutcome.SAVED) {
+            result.error(error("FACE_NO_CAPTURE", "No face captured to save"));
+            return;
+        }
+        Log.w(TAG, "Debug face template seeded for " + userId);
+        result.success(null);
+    }
+
+    private static String authMessageKey(FaceAuthService.Outcome outcome) {
+        switch (outcome) {
+            case MATCHED:
+                return "liveness.badge.verified";
+            case NOT_MATCHED:
+                return "liveness.auth.no_match";
+            case NO_TEMPLATE:
+                return "liveness.auth.no_template";
+            case NO_CAPTURE:
+                return "liveness.auth.no_capture";
+            default:
+                return "liveness.auth.unavailable";
+        }
     }
 
     /**

@@ -5,6 +5,8 @@ import java.util.List;
 
 import javax.inject.Inject;
 
+import io.mosip.kernel.biometrics.constant.BiometricType;
+
 import io.mosip.registration.clientmanager.constant.Modality;
 import io.mosip.registration.clientmanager.constant.RegistrationConstants;
 import io.mosip.registration.clientmanager.dao.UserBiometricDao;
@@ -67,6 +69,57 @@ public class UserBiometricRepository {
      */
     public List<UserBiometric> findAllOperatorBiometricsExceptCurrent(String biometricType, String userId){
         return userBiometricDao.findAllOtherUsersByBiometricType(biometricType, userId);
+    }
+
+    /**
+     * The user's face templates from onboarding, for 1:1 face authentication (B-09).
+     *
+     * @param userId the operator or supervisor
+     * @return the user's FACE templates; empty when none
+     */
+    public List<UserBiometric> findFaceTemplates(String userId) {
+        List<UserBiometric> faces = new ArrayList<>();
+        for (UserBiometric biometric : userBiometricDao.findByUsrId(userId)) {
+            if (BiometricType.FACE.value().equalsIgnoreCase(biometric.getBioTypeCode())
+                    && !Boolean.TRUE.equals(biometric.getIsDeleted())) {
+                faces.add(biometric);
+            }
+        }
+        return faces;
+    }
+
+    /** Marks a face template saved by the debug seed (R2), so only seeded rows are ever replaced. */
+    public static final String SEED_FACE_ATTRIBUTE = "face-seed";
+
+    /**
+     * Debug builds only (B-21 seed, R2): saves {@code iso} as the user's seeded face template, so face
+     * authentication can be shown without online onboarding. It replaces only earlier seeded rows, and never runs
+     * for a user with an onboarded face template, so a real operator's template can never be overwritten.
+     *
+     * @param userId       the operator or supervisor
+     * @param iso          the ISO 19794-5 face image
+     * @param qualityScore the capture's quality score
+     * @return false, saving nothing, when the user has an onboarded (non-seed) face template
+     */
+    public boolean replaceSeedFaceTemplate(String userId, byte[] iso, int qualityScore) {
+        for (UserBiometric existing : userBiometricDao.findByUsrId(userId)) {
+            if (BiometricType.FACE.value().equalsIgnoreCase(existing.getBioTypeCode())
+                    && !SEED_FACE_ATTRIBUTE.equals(existing.getBioAttributeCode())) {
+                return false;
+            }
+        }
+        UserBiometric face = new UserBiometric();
+        face.setUsrId(userId);
+        face.setBioTypeCode(BiometricType.FACE.value());
+        face.setBioAttributeCode(SEED_FACE_ATTRIBUTE);
+        face.setBioTemplate(iso);
+        face.setQualityScore(qualityScore);
+        face.setIsDeleted(false);
+        userBiometricDao.deleteSeedFaceByUsrId(userId);
+        List<UserBiometric> faces = new ArrayList<>();
+        faces.add(face);
+        userBiometricDao.insertAllUserBiometrics(faces);
+        return true;
     }
 
     public String saveOnboardStatus(String userId) {

@@ -424,5 +424,9 @@
   "liveness_title_supervisor_eod": "Supervisor authentication: approve packets",
   "liveness_permission_title": "Camera access needed",
   "liveness_permission_body": "The camera is used only to check that a real person is present. No video is saved.",
-  "liveness_offline_announce": "Working offline"
+  "liveness_offline_announce": "Working offline",
+  "liveness_auth_no_match": "Face does not match. Try again or use your password.",
+  "liveness_auth_no_template": "No face is enrolled for this user. Use your password or contact your administrator.",
+  "liveness_auth_unavailable": "Face authentication is not available. Use your password.",
+  "liveness_auth_no_capture": "No face was captured. Please try again."
 }

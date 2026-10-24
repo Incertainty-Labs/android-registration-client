@@ -104,6 +104,14 @@ String livenessText(AppLocalizations l10n, String key, [List<int> args = const [
       return l10n.liveness_permission_body;
     case 'liveness.offline.announce':
       return l10n.liveness_offline_announce;
+    case 'liveness.auth.no_match':
+      return l10n.liveness_auth_no_match;
+    case 'liveness.auth.no_template':
+      return l10n.liveness_auth_no_template;
+    case 'liveness.auth.unavailable':
+      return l10n.liveness_auth_unavailable;
+    case 'liveness.auth.no_capture':
+      return l10n.liveness_auth_no_capture;
     default:
       return key;
   }

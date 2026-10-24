@@ -150,6 +150,34 @@ void main() {
     expect(find.text('HYBRID'), findsNothing);
   });
 
+  testWidgets('R2 seeding captures a face and saves it for the user', (tester) async {
+    var captures = 0;
+    await tester.pumpWidget(app(LivenessTestPage(seedCapture: () async => captures++)));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byKey(const Key('liveness-test-seed-user')), '110011');
+    await tester.ensureVisible(find.byKey(const Key('liveness-test-seed')));
+    await tester.tap(find.byKey(const Key('liveness-test-seed')));
+    await tester.pumpAndSettle();
+
+    expect(captures, 1);
+    expect(service.seeded, ['110011']);
+    expect(find.text('Face template saved for 110011'), findsOneWidget);
+  });
+
+  testWidgets('R2 a refused seed shows the code', (tester) async {
+    service.seedError = PlatformException(code: 'FACE_NO_CAPTURE');
+    await tester.pumpWidget(app(LivenessTestPage(seedCapture: () async {})));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byKey(const Key('liveness-test-seed-user')), '110011');
+    await tester.ensureVisible(find.byKey(const Key('liveness-test-seed')));
+    await tester.tap(find.byKey(const Key('liveness-test-seed')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('FACE_NO_CAPTURE'), findsOneWidget);
+  });
+
   testWidgets('B-21 Reset clears the result', (tester) async {
     await tester.pumpWidget(app(const LivenessTestPage()));
     await tester.pumpAndSettle();

@@ -14,9 +14,16 @@ import org.robolectric.annotation.Config;
 import org.robolectric.shadows.ShadowActivity;
 
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
+import io.mosip.registration.clientmanager.constant.AuditEvent;
+import io.mosip.registration.clientmanager.constant.Components;
+import io.mosip.registration.clientmanager.dto.registration.BiometricsDto;
+import io.mosip.registration.clientmanager.service.FaceAuthService;
+import io.mosip.registration.clientmanager.spi.AuditManagerService;
 import io.mosip.registration.clientmanager.repository.GlobalParamRepository;
 import io.mosip.registration.clientmanager.spi.LocalConfigService;
 import io.mosip.registration.liveness.api.ChallengeOutcome;
@@ -37,7 +44,12 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.never;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.when;
 
 /** B-05: the Pigeon LivenessApi always completes, and maps the activity's result to the DTO (TC-AND-02). */
@@ -216,12 +228,186 @@ public class LivenessApiImplTest {
     }
 
     @Test
-    public void tcAnd02_faceAuth_isNotImplementedYet() {
+    public void tcAnd10_faceAuth_unknownWorkflow_isRejected() {
         Reply<LivenessPigeon.AuthResultDto> reply = new Reply<>();
 
-        api("enabled=true").authenticateWithFace("110011", "OPERATOR_AUTH", reply);
+        faceAuthApi().authenticateWithFace(OPERATOR, "OPERATOR_AUTH", reply);
 
-        assertEquals("NOT_IMPLEMENTED", reply.code());
+        assertEquals("LIVENESS_BAD_REQUEST", reply.code());
+    }
+
+    @Test
+    public void tcAnd10_faceAuth_liveFaceThatMatches_isAuthenticated() {
+        LivenessApiImpl api = faceAuthApi();
+        passLiveness(api, PACKET_AUTH);
+        authCapture.hold(Collections.singletonList(new BiometricsDto()));
+        when(faceAuth.authenticate(eq(OPERATOR), anyList())).thenReturn(FaceAuthService.Outcome.MATCHED);
+        Reply<LivenessPigeon.AuthResultDto> reply = new Reply<>();
+
+        api.authenticateWithFace(OPERATOR, PACKET_AUTH, reply);
+
+        assertEquals(Boolean.TRUE, reply.value.getAuthenticated());
+        assertNull(reply.value.getErrorCode());
+        assertTrue("the capture is used once", authCapture.take().isEmpty());
+        verify(audit).audit(eq(AuditEvent.CREATE_PACKET_AUTH), eq(Components.REGISTRATION), contains(OPERATOR));
+    }
+
+    @Test
+    public void tcAnd11_faceAuth_otherFace_isNotAuthenticated() {
+        LivenessPigeon.AuthResultDto dto = authenticateWith(FaceAuthService.Outcome.NOT_MATCHED);
+
+        assertEquals(Boolean.FALSE, dto.getAuthenticated());
+        assertEquals("FACE_NOT_MATCHED", dto.getErrorCode());
+        assertEquals("liveness.auth.no_match", dto.getMessageKey());
+        verify(audit).audit(eq(AuditEvent.CREATE_PACKET_AUTH_FAILED), eq(Components.REGISTRATION), anyString());
+    }
+
+    @Test
+    public void tcAnd10_faceAuth_userWithoutTemplate_isAnEnrolmentProblem() {
+        LivenessPigeon.AuthResultDto dto = authenticateWith(FaceAuthService.Outcome.NO_TEMPLATE);
+
+        assertEquals("FACE_NO_TEMPLATE", dto.getErrorCode());
+        assertEquals("liveness.auth.no_template", dto.getMessageKey());
+    }
+
+    @Test
+    public void tcAnd10_faceAuth_noMatchProvider_isUnavailable() {
+        LivenessPigeon.AuthResultDto dto = authenticateWith(FaceAuthService.Outcome.NO_PROVIDER);
+
+        assertEquals("FACE_NO_PROVIDER", dto.getErrorCode());
+        assertEquals("liveness.auth.unavailable", dto.getMessageKey());
+    }
+
+    @Test
+    public void tcAnd10_faceAuth_withoutALivenessPass_neverMatches() {
+        LivenessApiImpl api = faceAuthApi();
+        authCapture.hold(Collections.singletonList(new BiometricsDto()));
+        Reply<LivenessPigeon.AuthResultDto> reply = new Reply<>();
+
+        api.authenticateWithFace(OPERATOR, PACKET_AUTH, reply);
+
+        assertEquals(Boolean.FALSE, reply.value.getAuthenticated());
+        assertEquals("LIVENESS_REQUIRED", reply.value.getErrorCode());
+        verify(faceAuth, never()).authenticate(anyString(), anyList());
+    }
+
+    @Test
+    public void tcAnd10_faceAuth_aPassForAnotherWorkflow_doesNotCount() {
+        LivenessApiImpl api = faceAuthApi();
+        passLiveness(api, "SUPERVISOR_EOD_AUTH");
+        Reply<LivenessPigeon.AuthResultDto> reply = new Reply<>();
+
+        api.authenticateWithFace(OPERATOR, PACKET_AUTH, reply);
+
+        assertEquals("LIVENESS_REQUIRED", reply.value.getErrorCode());
+    }
+
+    @Test
+    public void tcAnd10_faceAuth_livenessOff_failsClosed() {
+        LivenessApiImpl api = new LivenessApiImpl(globalParams, localConfig, null, true);
+        api.setFaceAuth(faceAuth, authCapture, audit);
+        Reply<LivenessPigeon.AuthResultDto> reply = new Reply<>();
+
+        api.authenticateWithFace(OPERATOR, PACKET_AUTH, reply);
+
+        assertEquals(Boolean.FALSE, reply.value.getAuthenticated());
+        assertEquals("LIVENESS_DISABLED", reply.value.getErrorCode());
+    }
+
+    @Test
+    public void tcAnd10_seed_isRefusedWithoutTheTestScreen() {
+        authCapture.hold(Collections.singletonList(new BiometricsDto()));
+        Reply<Void> reply = new Reply<>();
+
+        LivenessApiImpl fieldBuild = api("enabled=true");
+        fieldBuild.setFaceAuth(faceAuth, authCapture, audit);
+
+        fieldBuild.seedFaceTemplate(OPERATOR, reply);
+
+        assertEquals("TEST_OVERRIDES_NOT_ALLOWED", reply.code());
+        verify(faceAuth, never()).seedTemplate(anyString(), anyList());
+    }
+
+    @Test
+    public void tcAnd10_seed_savesTheHeldCaptureForTheUser() {
+        LivenessApiImpl api = api("enabled=true", true);
+        api.setFaceAuth(faceAuth, authCapture, audit);
+        List<BiometricsDto> face = Collections.singletonList(new BiometricsDto());
+        authCapture.hold(face);
+        when(faceAuth.seedTemplate(OPERATOR, face)).thenReturn(FaceAuthService.SeedOutcome.SAVED);
+        Reply<Void> reply = new Reply<>();
+
+        api.seedFaceTemplate(OPERATOR, reply);
+
+        assertEquals(1, reply.calls);
+        assertNull(reply.error);
+        assertTrue(authCapture.take().isEmpty());
+    }
+
+    @Test
+    public void tcAnd10_seed_neverReplacesAnOnboardedTemplate() {
+        LivenessApiImpl api = api("enabled=true", true);
+        api.setFaceAuth(faceAuth, authCapture, audit);
+        authCapture.hold(Collections.singletonList(new BiometricsDto()));
+        when(faceAuth.seedTemplate(eq(OPERATOR), anyList())).thenReturn(FaceAuthService.SeedOutcome.ENROLLED);
+        Reply<Void> reply = new Reply<>();
+
+        api.seedFaceTemplate(OPERATOR, reply);
+
+        assertEquals("FACE_ALREADY_ENROLLED", reply.code());
+    }
+
+    @Test
+    public void tcAnd10_faceAuth_fieldBuild_isNotOffered() {
+        when(faceAuth.isAvailable()).thenReturn(true);
+        LivenessApiImpl fieldBuild = api("enabled=true");
+        fieldBuild.setFaceAuth(faceAuth, authCapture, audit);
+        Reply<Map<String, String>> reply = new Reply<>();
+
+        fieldBuild.getLivenessConfig(PACKET_AUTH, reply);
+
+        assertEquals("false", reply.value.get("faceAuthAvailable"));
+    }
+
+    @Test
+    public void tcAnd10_faceAuth_fieldBuild_isRefused() {
+        LivenessApiImpl fieldBuild = api("enabled=true");
+        fieldBuild.setFaceAuth(faceAuth, authCapture, audit);
+        passLiveness(fieldBuild, PACKET_AUTH);
+        authCapture.hold(Collections.singletonList(new BiometricsDto()));
+        Reply<LivenessPigeon.AuthResultDto> reply = new Reply<>();
+
+        fieldBuild.authenticateWithFace(OPERATOR, PACKET_AUTH, reply);
+
+        assertEquals(Boolean.FALSE, reply.value.getAuthenticated());
+        assertEquals("FACE_AUTH_NOT_ALLOWED", reply.value.getErrorCode());
+        verify(faceAuth, never()).authenticate(anyString(), anyList());
+    }
+
+    @Test
+    public void tcAnd10_seedWithoutACapture_failsClearly() {
+        LivenessApiImpl api = api("enabled=true", true);
+        api.setFaceAuth(faceAuth, authCapture, audit);
+        Reply<Void> reply = new Reply<>();
+
+        api.seedFaceTemplate(OPERATOR, reply);
+
+        assertEquals("FACE_NO_CAPTURE", reply.code());
+    }
+
+    @Test
+    public void tcAnd10_operatorAuthCapture_isLeftToTheMatch() {
+        assertTrue(api("enabled=true").faceCaptureAllowed("operatorAuth"));
+    }
+
+    @Test
+    public void tcAnd10_config_saysWhetherFaceAuthIsAvailable() {
+        when(faceAuth.isAvailable()).thenReturn(true);
+        Reply<Map<String, String>> reply = new Reply<>();
+
+        faceAuthApi().getLivenessConfig(PACKET_AUTH, reply);
+
+        assertEquals("true", reply.value.get("faceAuthAvailable"));
     }
 
     @Test
@@ -368,6 +554,37 @@ public class LivenessApiImplTest {
 
     private LivenessApiImpl api(String overrides) {
         return api(overrides, false);
+    }
+
+    private static final String OPERATOR = "110011";
+    private static final String PACKET_AUTH = "OPERATOR_PACKET_AUTH";
+
+    private final FaceAuthService faceAuth = mock(FaceAuthService.class);
+    private final AuditManagerService audit = mock(AuditManagerService.class);
+    private final OperatorAuthCapture authCapture = new OperatorAuthCapture();
+
+    private LivenessApiImpl faceAuthApi() {
+        LivenessApiImpl api = api("enabled=true", true);
+        api.setFaceAuth(faceAuth, authCapture, audit);
+        return api;
+    }
+
+    /** A liveness check for [workflow] on the operatorAuth field passes. */
+    private void passLiveness(LivenessApiImpl api, String workflow) {
+        api.startLiveness(workflow, OperatorAuthCapture.FIELD_ID, new Reply<>());
+        Shadows.shadowOf(activity).getNextStartedActivityForResult();
+        api.onActivityResult(LivenessContract.REQUEST_CODE, Activity.RESULT_OK, LivenessContract.resultIntent(
+                LivenessSessionStore.shared().complete(workflow, OperatorAuthCapture.FIELD_ID, passed(), false)));
+    }
+
+    private LivenessPigeon.AuthResultDto authenticateWith(FaceAuthService.Outcome outcome) {
+        LivenessApiImpl api = faceAuthApi();
+        passLiveness(api, PACKET_AUTH);
+        authCapture.hold(Collections.singletonList(new BiometricsDto()));
+        when(faceAuth.authenticate(eq(OPERATOR), anyList())).thenReturn(outcome);
+        Reply<LivenessPigeon.AuthResultDto> reply = new Reply<>();
+        api.authenticateWithFace(OPERATOR, PACKET_AUTH, reply);
+        return reply.value;
     }
 
     private LivenessApiImpl api(String overrides, boolean testScreen) {

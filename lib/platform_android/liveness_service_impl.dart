@@ -15,6 +15,13 @@ class LivenessServiceImpl implements LivenessService {
       LivenessApi().resetAttempts(workflow, fieldId);
 
   @override
+  Future<AuthResultDto> authenticateWithFace(String userId, String workflow) =>
+      LivenessApi().authenticateWithFace(userId, workflow);
+
+  @override
+  Future<void> seedFaceTemplate(String userId) => LivenessApi().seedFaceTemplate(userId);
+
+  @override
   Future<void> setTestOverrides(String overrides) => LivenessApi().setTestOverrides(overrides);
 }
 
