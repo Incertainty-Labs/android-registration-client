@@ -23,6 +23,9 @@ import 'package:registration_client/provider/biometric_capture_control_provider.
 import 'package:registration_client/provider/global_provider.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'package:registration_client/utils/sbi_capture_error.dart';
+import 'package:registration_client/provider/liveness_provider.dart';
+import 'package:registration_client/ui/process_ui/widgets/liveness_result_card.dart';
+import 'package:registration_client/utils/liveness_gate.dart';
 
 import 'package:registration_client/utils/app_config.dart';
 import 'package:registration_client/utils/biometrics_utils.dart';
@@ -592,15 +595,33 @@ class _BiometricCaptureScanBlockPortraitState
         const SizedBox(
           height: 45,
         ),
+        if (biometricAttributeData.title == LivenessGate.faceModality)
+          LivenessResultCard(fieldId: widget.field.id!),
         ElevatedButton.icon(
-          onPressed: () async {
+          // S12: once the face's liveness attempts are used up, the face cannot be captured
+          onPressed: biometricAttributeData.title == LivenessGate.faceModality &&
+                  context
+                      .watch<LivenessProvider>()
+                      .blockedFor(LivenessGate.workflow, widget.field.id!)
+              ? null
+              : () async {
             if (biometricAttributeData.exceptions.contains(false)) {
               if (biometricAttributeData.attemptNo <
                   biometricAttributeData.noOfCapturesAllowed) {
                 List<Uint8List?> tempImageList = [];
                 try {
-                  await BiometricsApi().invokeDiscoverSbi(widget.field.id!,
-                      biometricAttributeData.title.replaceAll(" ", ""));
+                  final modality =
+                      biometricAttributeData.title.replaceAll(" ", "");
+                  final captured =
+                      await LivenessGate(context.read<LivenessProvider>())
+                          .capture(
+                              widget.field.id!,
+                              modality,
+                              () => BiometricsApi().invokeDiscoverSbi(
+                                  widget.field.id!, modality));
+                  if (!captured) {
+                    return;
+                  }
                 } catch (e) {
                   showSbiCaptureError(context, e);
                   return;

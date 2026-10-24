@@ -22,6 +22,9 @@ import 'package:registration_client/utils/biometrics_utils.dart';
 import '../../../provider/global_provider.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'package:registration_client/utils/sbi_capture_error.dart';
+import 'package:registration_client/provider/liveness_provider.dart';
+import 'package:registration_client/ui/process_ui/widgets/liveness_result_card.dart';
+import 'package:registration_client/utils/liveness_gate.dart';
 
 class BiometricScanMiddleBlock extends StatefulWidget {
   const BiometricScanMiddleBlock(
@@ -192,8 +195,17 @@ class _BiometricScanMiddleBlockState extends State<BiometricScanMiddleBlock> {
                         if (widget.biometricAttributeData.attemptNo <
                             widget.biometricAttributeData.noOfCapturesAllowed) {
                           try {
-                            await BiometricsApi().invokeDiscoverSbi(
-                                widget.field.id!, widget.parameterTitle);
+                            final captured = await LivenessGate(
+                                    context.read<LivenessProvider>())
+                                .capture(
+                                    widget.field.id!,
+                                    widget.parameterTitle,
+                                    () => BiometricsApi().invokeDiscoverSbi(
+                                        widget.field.id!,
+                                        widget.parameterTitle));
+                            if (!captured) {
+                              return;
+                            }
                           } catch (e) {
                             showSbiCaptureError(context, e);
                             return;
@@ -295,15 +307,31 @@ class _BiometricScanMiddleBlockState extends State<BiometricScanMiddleBlock> {
                     ),
                   ],
                 ),
+          if (widget.parameterTitle == LivenessGate.faceModality)
+            LivenessResultCard(fieldId: widget.field.id!),
           OutlinedButton.icon(
-            onPressed: () async {
+            // S12: once the face's liveness attempts are used up, the face cannot be captured
+            onPressed: widget.parameterTitle == LivenessGate.faceModality &&
+                    context
+                        .watch<LivenessProvider>()
+                        .blockedFor(LivenessGate.workflow, widget.field.id!)
+                ? null
+                : () async {
               if (widget.biometricAttributeData.exceptions.contains(false)) {
                 if (widget.biometricAttributeData.attemptNo <
                     widget.biometricAttributeData.noOfCapturesAllowed) {
                   List<Uint8List?> temp = [];
                   try {
-                    await BiometricsApi().invokeDiscoverSbi(
-                        widget.field.id!, widget.parameterTitle);
+                    final captured =
+                        await LivenessGate(context.read<LivenessProvider>())
+                            .capture(
+                                widget.field.id!,
+                                widget.parameterTitle,
+                                () => BiometricsApi().invokeDiscoverSbi(
+                                    widget.field.id!, widget.parameterTitle));
+                    if (!captured) {
+                      return;
+                    }
                   } catch (e) {
                     showSbiCaptureError(context, e);
                     return;

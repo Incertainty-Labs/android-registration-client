@@ -36,7 +36,7 @@ class LivenessResultCard extends StatelessWidget {
     final message = livenessText(l10n, result.messageKey ?? 'liveness.fail.generic');
     final children = <Widget>[_line(context, Icons.error_outline, message, Colors.red.shade700)];
     if (provider.blockedFor(_workflow, fieldId)) {
-      children.add(_ExceptionHint(workflow: _workflow));
+      children.add(const _ExceptionHint(workflow: _workflow));
     } else if (result.retryAllowed == true && result.attempt != null && result.maxAttempts != null) {
       children.add(Text(livenessText(l10n, 'liveness.retry.available', [result.attempt!, result.maxAttempts!])));
     }
