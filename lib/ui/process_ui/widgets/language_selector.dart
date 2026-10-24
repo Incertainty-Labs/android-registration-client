@@ -109,7 +109,7 @@ class _LanguageSelectorState extends State<LanguageSelector> {
         latitude: latitude,
         longitude: longitude);
     // A new resident starts with all face liveness attempts again
-    await livenessProvider.resetWorkflow(LivenessGate.workflow);
+    await livenessProvider.resetWorkflow(LivenessGate.residentWorkflow);
 
     registrationTaskProvider.addDemographicField("preferredLang",
         globalProvider.fieldInputValue["preferredLang"].toString());

@@ -122,6 +122,30 @@ void main() {
     expect(find.text('Face verification is unavailable. Please contact support.'), findsOneWidget);
   });
 
+  testWidgets('TC-AND-09 the onboarding card shows the onboarding result only', (tester) async {
+    await tester.pumpWidget(ChangeNotifierProvider.value(
+      value: provider,
+      child: MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        locale: const Locale('en'),
+        home: const Scaffold(
+            body: LivenessResultCard(fieldId: 'operatorBiometrics', workflow: 'OPERATOR_ONBOARDING')),
+      ),
+    ));
+    final resident = provider.start(workflow, 'operatorBiometrics');
+    service.pending!.complete(LivenessResultDto(finalState: 'PASSED', decision: 'LIVE'));
+    await resident;
+    await tester.pumpAndSettle();
+    expect(find.text('Liveness: verified'), findsNothing);
+
+    final onboarding = provider.start('OPERATOR_ONBOARDING', 'operatorBiometrics');
+    service.pending!.complete(LivenessResultDto(finalState: 'PASSED', decision: 'LIVE'));
+    await onboarding;
+    await tester.pumpAndSettle();
+    expect(find.text('Liveness: verified'), findsOneWidget);
+  });
+
   testWidgets('TC-AND-05 liveness off and a cancel show nothing', (tester) async {
     await pumpCard(tester);
 

@@ -1,12 +1,18 @@
 import 'package:registration_client/provider/liveness_provider.dart';
 
-/// Puts the face liveness check in front of a resident face capture (B-06, UI_UX_SPEC §7.1): the SBI capture
-/// runs only after the face passed, or when liveness is off for the workflow.
+/// Puts the face liveness check in front of a face capture (B-06 residents, B-19 operator onboarding;
+/// UI_UX_SPEC §7.1): the SBI capture runs only after the face passed, or when liveness is off for the workflow.
 class LivenessGate {
-  LivenessGate(this._provider);
+  LivenessGate(this._provider, {this.workflow = residentWorkflow});
 
   /// Every registration process (new, update, lost) is the resident registration workflow for liveness.
-  static const workflow = 'RESIDENT_REGISTRATION';
+  static const residentWorkflow = 'RESIDENT_REGISTRATION';
+
+  /// Operator onboarding (policy `onboard_auth`): attempts and policy kept apart from residents'.
+  static const onboardingWorkflow = 'OPERATOR_ONBOARDING';
+
+  /// The liveness workflow this gate checks under.
+  final String workflow;
 
   /// The modality name the capture widgets use for the face.
   static const faceModality = 'Face';

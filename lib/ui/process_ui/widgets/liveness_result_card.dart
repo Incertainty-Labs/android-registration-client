@@ -9,34 +9,35 @@ import 'package:registration_client/utils/liveness_text.dart';
 /// failure with the attempts left, S12 attempts used up. Never shows codes, scores or the decision, so an attack
 /// reads like any other failure. Empty before a check, after a cancel, or when liveness is off.
 class LivenessResultCard extends StatelessWidget {
-  const LivenessResultCard({super.key, required this.fieldId});
+  const LivenessResultCard({super.key, required this.fieldId, this.workflow = LivenessGate.residentWorkflow});
 
   final String fieldId;
 
-  static const _workflow = LivenessGate.workflow;
+  /// The liveness workflow the field was checked under.
+  final String workflow;
 
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<LivenessProvider>();
     final l10n = AppLocalizations.of(context)!;
-    if (provider.isChecking(_workflow, fieldId)) {
+    if (provider.isChecking(workflow, fieldId)) {
       return _line(context, Icons.hourglass_top, livenessText(l10n, 'liveness.status.checking'), null);
     }
-    final error = provider.errorFor(_workflow, fieldId);
+    final error = provider.errorFor(workflow, fieldId);
     if (error != null && error != 'LIVENESS_DISABLED') {
       return _line(context, Icons.error_outline, livenessText(l10n, 'liveness.error.engine'), Colors.red.shade700);
     }
-    final result = provider.resultFor(_workflow, fieldId);
+    final result = provider.resultFor(workflow, fieldId);
     if (result == null || result.finalState == 'CANCELLED') {
       return const SizedBox.shrink();
     }
-    if (provider.passedFor(_workflow, fieldId)) {
+    if (provider.passedFor(workflow, fieldId)) {
       return _line(context, Icons.verified_user, livenessText(l10n, 'liveness.badge.verified'), Colors.green.shade700);
     }
     final message = livenessText(l10n, result.messageKey ?? 'liveness.fail.generic');
     final children = <Widget>[_line(context, Icons.error_outline, message, Colors.red.shade700)];
-    if (provider.blockedFor(_workflow, fieldId)) {
-      children.add(const _ExceptionHint(workflow: _workflow));
+    if (provider.blockedFor(workflow, fieldId)) {
+      children.add(_ExceptionHint(workflow: workflow));
     } else if (result.retryAllowed == true && result.attempt != null && result.maxAttempts != null) {
       children.add(Text(livenessText(l10n, 'liveness.retry.available', [result.attempt!, result.maxAttempts!])));
     }

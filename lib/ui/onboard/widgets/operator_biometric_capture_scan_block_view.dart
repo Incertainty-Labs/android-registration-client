@@ -17,6 +17,9 @@ import 'package:registration_client/utils/app_config.dart';
 import 'package:registration_client/utils/biometrics_utils.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'package:registration_client/utils/sbi_capture_error.dart';
+import 'package:registration_client/provider/liveness_provider.dart';
+import 'package:registration_client/ui/process_ui/widgets/liveness_result_card.dart';
+import 'package:registration_client/utils/liveness_gate.dart';
 
 import 'package:registration_client/provider/auth_provider.dart';
 
@@ -378,13 +381,33 @@ class _OperatorBiometricCaptureScanBlockViewState
         const SizedBox(
           height: 45,
         ),
+        if (biometricAttributeData.title == LivenessGate.faceModality)
+          const LivenessResultCard(
+              fieldId: "operatorBiometrics",
+              workflow: LivenessGate.onboardingWorkflow),
         ElevatedButton.icon(
-          onPressed: () async {
+          // S12: once the operator's liveness attempts are used up, the face cannot be captured
+          onPressed: biometricAttributeData.title == LivenessGate.faceModality &&
+                  context.watch<LivenessProvider>().blockedFor(
+                      LivenessGate.onboardingWorkflow, "operatorBiometrics")
+              ? null
+              : () async {
             if (biometricAttributeData.exceptions.contains(false)) {
               List<Uint8List?> tempImageList = [];
               try {
-                await BiometricsApi().invokeDiscoverSbi("operatorBiometrics",
-                    biometricAttributeData.title.replaceAll(" ", ""));
+                final modality =
+                    biometricAttributeData.title.replaceAll(" ", "");
+                final captured = await LivenessGate(
+                        context.read<LivenessProvider>(),
+                        workflow: LivenessGate.onboardingWorkflow)
+                    .capture(
+                        "operatorBiometrics",
+                        modality,
+                        () => BiometricsApi()
+                            .invokeDiscoverSbi("operatorBiometrics", modality));
+                if (!captured) {
+                  return;
+                }
               } catch (e) {
                 showSbiCaptureError(context, e);
                 return;
