@@ -1,6 +1,11 @@
 # Face liveness for the Android Registration Client (MOSIP Decode PS04)
 
-This fork adds **face liveness detection** (presentation attack detection, PAD) to every face capture in the Android Registration Client (ARC). A person must prove they are live in front of the phone's camera before ARC asks the SBI for the face. A printed photo, a phone screen or a replayed video is refused before any biometric is captured.
+This fork adds **face liveness detection** (presentation attack detection, PAD) to every face capture in the Android Registration Client (ARC). A person must prove they are live in front of the phone's camera before ARC asks the SBI for the face. It is designed to refuse presentation attacks (printed photos, photos and videos on a screen, masks) before any biometric is captured.
+
+**What has been tested so far:**
+- **Engine:** phone photos at 30 and 50 cm, a phone video and a monitor, on our own clips, all scored as spoofs (liveness-core 0.2.0 acceptance).
+- **This app, 25 Oct:** a photo on a phone screen held to the camera was refused (ATTACK_SUSPECTED, LIV-008) about 2 s after the check began.
+- **Not yet:** printed photos and masks. The ISO/IEC 30107-3 evaluation (APCER per attack type, BPCER) is still to come.
 
 The engine is the shared `liveness-core` library from [mosip-face-liveness](https://github.com/Incertainty-Labs/mosip-face-liveness), which the Desktop client uses too. It runs fully on the device, offline, on the CPU.
 
@@ -15,9 +20,12 @@ The engine is the shared `liveness-core` library from [mosip-face-liveness](http
 
 **How a check runs.** The default mode is **HYBRID**:
 1. A quiet passive check scores 8 frames with two MiniFASNet PAD models. The person only looks at the camera.
-2. If that passes, the person holds still for about 2 seconds, and the check passes.
+2. If that passes, the person holds still for a moment (about 1 to 2 seconds), and the check passes.
 3. If the passive check is unsure, the engine asks for 2 or 3 random challenges, checked against the person's own neutral face: blink, close the eyes, smile, open the mouth, turn left or right, or look up.
-4. A frozen or replayed stream is vetoed, and a second face fails the check.
+4. Throughout, these safeguards apply:
+   - **Frozen stream:** a frozen or static stream is vetoed outright (LIV-015).
+   - **Replayed video:** a moving stream such as a replayed video is caught, when it is, by the two PAD models scoring it as a spoof.
+   - **A second face:** during challenges it fails the attempt (LIV-005); during the passive check it only prompts "Only one person should be in front of the camera".
 
 A typical real face passes in about 3 seconds; with challenges it takes about 8.
 
@@ -93,7 +101,7 @@ The model bundle ships in `android/livenessmanager/src/main/assets/models/`, abo
 
 Liveness is configured with MOSIP global config keys under the prefix `mosip.registration.face.liveness.`. Any key can be set for one workflow as `mosip.registration.face.liveness.policy.<code>.<key>`. The codes are `registration`, `exception_photo`, `onboard_auth`, `login_auth`, `packet_auth`, `exception_auth` and `eod_auth`.
 
-**Precedence:** synced server config < `mosip.liveness.overrides` in the build < local preferences. A key changed on the device must also be permitted by the server (`permitted_local_config`).
+**Precedence**, lowest first: synced server config < local preferences < `mosip.liveness.overrides` in the build < the test screen's choice. A key changed in local preferences must also be permitted by the server (`permitted_local_config`). A per-workflow key (`policy.<code>.<key>`) wins over the global key at any layer. For example, `policy.registration.mode` in the synced config overrides the test screen's global `mode=ACTIVE`.
 
 | Key | Default | Meaning |
 | --- | --- | --- |
@@ -102,7 +110,7 @@ Liveness is configured with MOSIP global config keys under the prefix `mosip.reg
 | `passive.threshold` | `0.80` | Minimum passive live score |
 | `passive.min.frames` | `8` | Frames the passive check needs |
 | `active.enabled` | `true` | Whether HYBRID may escalate to challenges |
-| `challenge.pool` | all | Challenges to draw from |
+| `challenge.pool` | `TURN_LEFT, TURN_RIGHT, LOOK_UP, SMILE, OPEN_MOUTH, CLOSE_EYES, BLINK` | Challenges to draw from (`LOOK_DOWN` exists but is not in the default pool) |
 | `challenge.min.count` / `challenge.max.count` | `2` / `3` | Challenges per check |
 | `challenge.timeout.ms` | `5000` | Time per challenge |
 | `session.timeout.ms` | `30000` | Time per check |
@@ -115,7 +123,9 @@ Liveness is configured with MOSIP global config keys under the prefix `mosip.reg
 
 The thresholds are the engine's defaults. The calibrated values from the evaluation run will replace them here when they are published.
 
-**Engine speed options** are fixed in `AssetModelLoader.OPTIONS`: CPU, 2 threads, and the face detector on every 3rd frame. They were measured as the fastest on the test phone; see Performance.
+**Engine speed options** are fixed in `AssetModelLoader.OPTIONS`: CPU, 2 threads, and the face detector on every 3rd frame. They were measured as the fastest on the test phone; see Performance. The `accel` config key is **not read on Android**, so setting it changes nothing here.
+
+**The exception photo stays passive** even when the global `mode` is `ACTIVE`, including the test screen's "Real engine (challenges)". Only `policy.exception_photo.mode` changes it, because the person may not be able to do challenges.
 
 ## Testing
 
@@ -143,7 +153,7 @@ adb logcat -s EngineOnDeviceTest:I
 
 The face timing needs a consented photo at `android/livenessmanager/src/androidTest/assets/consented/b-selfie.jpg`. It is kept out of git, and the test is skipped without it.
 
-Results per test case are in the project's test report (`docs/testing/TEST_REPORT_ANDROID.md` in mosip-face-liveness).
+Results per test case are in the project's Android test report.
 
 ## Performance
 
