@@ -29,8 +29,12 @@ android {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            // Signs the androidTest APK when the on-device tests run on this build type
+            signingConfig signingConfigs.debug
         }
     }
+    // On-device timings need a non-debuggable, uninstrumented build: -PlivenessTestBuildType=release
+    testBuildType project.findProperty('livenessTestBuildType') ?: 'debug'
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_21
         targetCompatibility JavaVersion.VERSION_21
