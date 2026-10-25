@@ -83,13 +83,14 @@ Set these in `android/local.properties` (git-ignored):
 | `mosip.serverBaseURL` | Your MOSIP server, for example a Collab environment |
 | `mosip.liveness.testScreen=true` | Gives a release build the Liveness test screen. Debug builds always have it. |
 | `mosip.liveness.overrides` | Optional build-time liveness config, for example `enabled=true` to turn liveness on where the server leaves it off |
+| `mosip.release.abis` | ABIs in the release APK, comma-separated. `arm64-v8a` alone gives about 173 MB instead of 273 MB (ONNX Runtime ships a native library per ABI). Unset keeps all four. |
 
 Then build:
 
 ```sh
 flutter pub get
 cd android
-./gradlew :app:assembleRelease -Ptarget-platform=android-arm64
+./gradlew :app:assembleRelease -Ptarget-platform=android-arm64 -Pmosip.release.abis=arm64-v8a
 # APK: build/app/outputs/apk/release/app-release.apk
 ```
 
@@ -175,6 +176,7 @@ On the CPU, XNNPACK was no faster, and NNAPI was 4 to 5 times slower.
 
 - **The face match binder is off.** The engine can bind the SBI capture to the live session by matching the two faces. That needs the SFace matcher in `face-verification`, which is future work; the mock SBI also returns a fixed bundled face, so a match could not prove anything in a demo. Freshness binding (Fresh captures only, above) does not need the matcher and is on.
 - **Face authentication is offered only in test screen builds.** Operator and supervisor face auth (liveness, SBI capture, 1:1 match through the BioSDK) works. Without the binder, though, the matched face is not proven to be the live one, so field builds keep password authentication.
+- **The phone is not onboarded on Collab yet.** MockAndroidSBI (`mosip/android-camera-mds`, `develop`) is installed with MOSIP's Collab device and FTM keys, and both load as valid. Over the Collab VPN, ARC reaches the server and finds the SBI. But MOSIP has not onboarded this machine yet: login says "The device has not been onboarded yet". So ARC has never synced its trusted device certificates, and the device info fails trust with REG-SBI-108. The SBI capture after a pass, and freshness on a real signed capture, are therefore covered by unit tests only. The liveness check itself runs fully on the phone. Registration-purpose captures do not need the IDA encryption certificate that MockAndroidSBI also tries to fetch.
 - **The mock SBI returns a fixed face.** With MockAndroidSBI, the captured image is not the person in front of the phone. Liveness still checks the real person on the phone's own camera.
 - **Attempt counts are kept in memory.** They reset when the app restarts. The same goes for a capture's freshness ticket: if the app is killed between the SBI request and its response, that capture fails with REG-LIV-014.
 - **A pass is good for 45 s.** By default the SBI capture must start within 45 s of the pass: `bind.freshness.max.age.ms` (60 s) minus a 15 s margin for the capture itself. After that, the capture is refused before the SBI opens (REG-SBI-121, "check again"), and no attempt is used. If the SBI still signs the capture more than 60 s after the pass, it fails with REG-LIV-014 and counts as a failed attempt. Keep `bind.freshness.max.age.ms` above 15 s, or every capture with liveness on is refused.

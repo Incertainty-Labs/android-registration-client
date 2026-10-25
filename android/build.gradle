@@ -68,6 +68,11 @@ def livenessOverrideValue = nonBlank(findProperty('mosip.liveness.overrides')) ?
         nonBlank(localProps.getProperty('mosip.liveness.overrides')) ?: ''
 // BuildConfig.LIVENESS_TEST_SCREEN: mosip.liveness.testScreen=true gives a release (demo) build the B-21 liveness
 // test screen, which debug builds always have
+// ABIs in the release APK: mosip.release.abis=arm64-v8a gives a demo APK about 120 MB smaller (ONNX Runtime ships a
+// native library per ABI). Unset keeps all four.
+def releaseAbiList = (nonBlank(findProperty('mosip.release.abis')) ?:
+        nonBlank(localProps.getProperty('mosip.release.abis')) ?: 'arm64-v8a,armeabi-v7a,x86_64,x86')
+        .split(',').collect { it.trim() }.findAll { it }
 def livenessTestScreen = (nonBlank(findProperty('mosip.liveness.testScreen')) ?:
         nonBlank(localProps.getProperty('mosip.liveness.testScreen')) ?: 'false').toBoolean()
 
@@ -85,6 +90,7 @@ ext {
     serverBaseURL = "\"${serverUrl}\""
     livenessOverrides = "\"${livenessOverrideValue}\""
     livenessTestScreenEnabled = "${livenessTestScreen}"
+    releaseAbis = releaseAbiList
     serverHealthCheckPath = "\"/v1/syncdata/actuator/health\""
     serverActuatorInfoPath = "\"/v1/syncdata/actuator/info\""
     debugPassword = "\"your-debug-password\""
@@ -148,7 +154,7 @@ ext {
     jwtDecodeVersion           = "2.0.1"
     icu4jVersion               = "74.1"
     biometricsUtilVersion      = "1.3.0"
-    livenessVersion            = "v0.2.1"   // mosip-face-liveness (JitPack tag)
+    livenessVersion            = "v0.2.5"   // mosip-face-liveness (JitPack tag)
     onnxruntimeAndroidVersion  = "1.28.0"
     kernelBiometricsApiVersion = "1.3.0"
     qrGenVersion               = "3.0.1"
