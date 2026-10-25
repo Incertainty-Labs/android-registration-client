@@ -23,6 +23,7 @@ import org.robolectric.RobolectricTestRunner;
 import org.robolectric.RuntimeEnvironment;
 import org.robolectric.annotation.Config;
 
+import io.mosip.registration.clientmanager.constant.Modality;
 import io.mosip.registration.clientmanager.dto.registration.BiometricsDto;
 import io.mosip.registration.clientmanager.dto.registration.RegistrationDto;
 import io.mosip.registration.clientmanager.dto.sbi.CaptureFreshnessTicket;
@@ -362,7 +363,8 @@ public class BiometricsDetailsApiSbiFlowTest {
     @Test
     public void tcFresh_captureResponse_isCheckedAgainstTheSameTicket() throws Exception {
         CaptureFreshnessTicket ticket = ticket("RESIDENT_REGISTRATION");
-        api.setCaptureFreshness(source(ticket));
+        BiometricsDetailsApi.CaptureFreshnessSource source = source(ticket);
+        api.setCaptureFreshness(source);
         startCaptureFlow();
         when(biometricsService.handleRCaptureResponse(any(), any(), any(), any(CaptureFreshnessTicket.class), anyBoolean()))
                 .thenReturn(new ArrayList<>(Collections.singletonList(mock(BiometricsDto.class))));
@@ -371,6 +373,32 @@ public class BiometricsDetailsApiSbiFlowTest {
 
         verify(biometricsService).handleRCaptureResponse(any(), any(), any(), same(ticket), eq(false));
         verify(result, times(1)).success("Ok");
+        verify(source).captureFinished("individualBiometrics", Modality.FACE, true);
+    }
+
+    @Test
+    public void tcFresh_cancelledCapture_dropsItsPass() throws Exception {
+        BiometricsDetailsApi.CaptureFreshnessSource source = source(ticket("RESIDENT_REGISTRATION"));
+        api.setCaptureFreshness(source);
+        startCaptureFlow();
+
+        api.onSbiActivityResult(CAPTURE, Activity.RESULT_CANCELED, null);
+
+        verify(source).captureFinished("individualBiometrics", Modality.FACE, false);
+        verify(source, never()).captureFinished(any(), any(), eq(true));
+    }
+
+    @Test
+    public void tcFresh_failedDiscovery_dropsThePassTheGuardUsed() throws Exception {
+        BiometricsDetailsApi.CaptureFreshnessSource source = source(ticket("RESIDENT_REGISTRATION"));
+        api.setCaptureFreshness(source);
+        when(biometricsService.handleDiscoveryResponse(any(), any()))
+                .thenThrow(new BiometricsServiceException("REG-SBI-114", "Discovery Failed! Invalid response"));
+        api.invokeDiscoverSbi("individualBiometrics", "Exception", result);
+
+        api.onSbiActivityResult(DISCOVER, Activity.RESULT_OK, sbiResponse());
+
+        verify(source).captureFinished("individualBiometrics", Modality.EXCEPTION_PHOTO, false);
     }
 
     @Test
@@ -390,6 +418,7 @@ public class BiometricsDetailsApiSbiFlowTest {
         assertEquals("REG-LIV-014", flutterError.code);
         assertEquals(CaptureNotFreshException.MESSAGE, flutterError.getMessage());
         verify(source).captureNotFresh(ticket, "signed timestamp is 61000 ms from the reference");
+        verify(source).captureFinished("individualBiometrics", Modality.FACE, false);
     }
 
     @Test

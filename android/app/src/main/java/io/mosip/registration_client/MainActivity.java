@@ -432,6 +432,11 @@ public class MainActivity extends FlutterActivity {
             public void captureNotFresh(CaptureFreshnessTicket ticket, String reason) {
                 livenessApi.captureNotFresh(ticket, reason);
             }
+
+            @Override
+            public void captureFinished(String fieldId, Modality modality, boolean accepted) {
+                livenessApi.captureFinished(fieldId, modality, accepted);
+            }
         });
         biometricsDetailsApi.setOperatorAuthCapture(operatorAuthCapture);
         RegistrationDataPigeon.RegistrationDataApi.setup(flutterEngine.getDartExecutor().getBinaryMessenger(), registrationApi);

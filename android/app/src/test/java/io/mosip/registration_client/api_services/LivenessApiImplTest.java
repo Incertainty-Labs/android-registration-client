@@ -33,7 +33,10 @@ import io.mosip.registration.liveness.api.ChallengeProgress;
 import io.mosip.registration.liveness.api.ChallengeType;
 import io.mosip.registration.liveness.api.Decision;
 import io.mosip.registration.liveness.api.LivenessErrorCode;
+import io.mosip.registration.liveness.api.LivenessPolicy;
 import io.mosip.registration.liveness.api.LivenessResult;
+import io.mosip.registration.liveness.config.LivenessConfigLoader;
+import io.mosip.registration.livenessmanager.LivenessSettings;
 import io.mosip.registration.liveness.api.SessionState;
 import io.mosip.registration.livenessmanager.LivenessActivity;
 import io.mosip.registration.livenessmanager.LivenessContract;
@@ -44,6 +47,7 @@ import io.mosip.registration_client.model.LivenessPigeon;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.contains;
@@ -648,7 +652,7 @@ public class LivenessApiImplTest {
 
         assertEquals(NONCE, ticket.nonce());
         assertEquals(WORKFLOW, ticket.workflow());
-        assertEquals(LivenessSessionStore.shared().capturedPassedAtEpochMs(WORKFLOW, FACE).longValue(),
+        assertEquals(LivenessSessionStore.shared().pendingPassedAtEpochMs(WORKFLOW, FACE).longValue(),
                 ticket.referenceEpochMs());
         assertEquals(60_000L, ticket.maxAgeMs());
     }
@@ -724,6 +728,97 @@ public class LivenessApiImplTest {
                 LivenessSessionStore.shared().lastResult(WORKFLOW, FACE).errorCode());
         verify(audit).auditWithArguments(eq(AuditEvent.LIVENESS_FAILED), anyString(), anyString(),
                 eq(WORKFLOW), eq("LIV-014"), eq("1"), eq("3"));
+    }
+
+    @Test
+    public void tcFresh_aStaleRetake_keepsTheEarlierFacesEvidence() {
+        LivenessApiImpl api = faceAuthApi();
+        LivenessResult passA = firstFaceCaptured(api);
+        mappedWith(api, passedWith("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"));
+        assertTrue(api.faceCaptureAllowed(FACE));
+
+        CaptureFreshnessTicket retake = api.captureTicket(FACE, Modality.FACE);
+        api.captureNotFresh(retake, "signed timestamp is 61000 ms from the reference");
+        api.captureFinished(FACE, Modality.FACE, false);
+
+        assertEquals("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", retake.nonce());
+        assertSame(passA, LivenessSessionStore.shared().capturedResult(WORKFLOW, FACE));
+    }
+
+    @Test
+    public void tcFresh_aFailedRetake_keepsTheEarlierFacesEvidence() {
+        LivenessApiImpl api = api("enabled=true");
+        LivenessResult passA = firstFaceCaptured(api);
+        mappedWith(api, passedWith("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"));
+        assertTrue(api.faceCaptureAllowed(FACE));
+
+        api.captureFinished(FACE, Modality.FACE, false);
+
+        assertSame(passA, LivenessSessionStore.shared().capturedResult(WORKFLOW, FACE));
+        assertNull(LivenessSessionStore.shared().pendingResult(WORKFLOW, FACE));
+    }
+
+    @Test
+    public void tcFresh_anAcceptedCapture_carriesItsOwnPass() {
+        LivenessApiImpl api = api("enabled=true");
+
+        LivenessResult pass = firstFaceCaptured(api);
+
+        assertSame(pass, LivenessSessionStore.shared().capturedResult(WORKFLOW, FACE));
+    }
+
+    /** A first face whose check passed with nonce "aaaa…" and whose capture the device answered. */
+    private LivenessResult firstFaceCaptured(LivenessApiImpl api) {
+        LivenessResult passA = passedWith("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+        mappedWith(api, passA);
+        assertTrue(api.faceCaptureAllowed(FACE));
+        api.captureFinished(FACE, Modality.FACE, true);
+        return passA;
+    }
+
+    private static LivenessResult passedWith(String nonce) {
+        return LivenessResult.builder(SessionState.PASSED, Decision.LIVE).passiveScore(0.93).nonce(nonce).build();
+    }
+
+    @Test
+    public void tcFresh_captureWindow_leavesTheCaptureTimeInsideTheFreshnessWindow() {
+        assertEquals(45_000L, LivenessApiImpl.captureWindowMs(policy("enabled=true")));
+        assertEquals(15_000L, LivenessApiImpl.captureWindowMs(policy("enabled=true;bind.freshness.max.age.ms=30000")));
+        assertEquals(LivenessApiImpl.PASS_MAX_AGE_MS,
+                LivenessApiImpl.captureWindowMs(policy("enabled=true;bind.freshness.max.age.ms=300000")));
+    }
+
+    @Test
+    public void tcFresh_aPassTooOldForTheFreshnessWindow_isRefusedBeforeTheCaptureWithoutUsingAnAttempt() {
+        LivenessApiImpl api = api("enabled=true;bind.freshness.max.age.ms=10000");
+        mappedWith(api, passed());
+
+        assertFalse(api.faceCaptureAllowed(FACE));
+
+        assertEquals(SessionState.PASSED, LivenessSessionStore.shared().lastResult(WORKFLOW, FACE).finalState());
+        assertEquals(1, LivenessSessionStore.shared().begin(WORKFLOW, FACE, null, 0));
+    }
+
+    @Test
+    public void tcFresh_anExceptionPhotoPassTooOld_isRefusedBeforeTheCapture() {
+        LivenessApiImpl api = api("enabled=true;bind.freshness.max.age.ms=10000");
+        checkedUnder(api, EXCEPTION_PHOTO, passed());
+
+        assertFalse(api.exceptionPhotoAllowed(FACE));
+    }
+
+    @Test
+    public void tcFresh_anOperatorAuthPassTooOld_getsNoTicket() {
+        LivenessApiImpl api = api("enabled=true;bind.freshness.max.age.ms=10000", true);
+        api.setFaceAuth(faceAuth, authCapture, audit);
+        passLiveness(api, PACKET_AUTH);
+
+        assertNull(api.captureTicket(OperatorAuthCapture.FIELD_ID, Modality.FACE));
+    }
+
+    private static LivenessPolicy policy(String overrides) {
+        return LivenessConfigLoader.load(LivenessSettings.merge(new HashMap<>(), overrides),
+                io.mosip.registration.liveness.api.Workflow.RESIDENT_REGISTRATION);
     }
 
     @Test

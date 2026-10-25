@@ -177,6 +177,15 @@ public class BiometricsDetailsApi implements BiometricsPigeon.BiometricsApi {
          * @param reason why it is not fresh, for the audit only
          */
         void captureNotFresh(CaptureFreshnessTicket ticket, String reason);
+
+        /**
+         * The capture flow ended. Only an accepted capture may replace the evidence of the face captured before.
+         *
+         * @param fieldId  the field
+         * @param modality the modality
+         * @param accepted true when the device's capture was accepted; false when the flow failed or was cancelled
+         */
+        void captureFinished(String fieldId, Modality modality, boolean accepted);
     }
 
     private static final SecureRandom RANDOM = new SecureRandom();
@@ -191,6 +200,10 @@ public class BiometricsDetailsApi implements BiometricsPigeon.BiometricsApi {
 
         @Override
         public void captureNotFresh(CaptureFreshnessTicket ticket, String reason) {
+        }
+
+        @Override
+        public void captureFinished(String fieldId, Modality modality, boolean accepted) {
         }
     };
 
@@ -219,6 +232,8 @@ public class BiometricsDetailsApi implements BiometricsPigeon.BiometricsApi {
         // The pass is used up here even if the capture then fails or is cancelled: retrying means a new liveness
         // check. That is deliberate; do not keep a pass across failed captures.
         Modality requested = getModality(modality);
+        // A pass the guard uses stays pending until this flow ends; only an accepted capture keeps it (B-07)
+        pendingCall.onEnd(completed -> captureFreshness.captureFinished(fieldId, requested, completed));
         if ((requested == Modality.FACE && !faceCaptureGuard.allows(fieldId))
                 || (requested == Modality.EXCEPTION_PHOTO && !exceptionPhotoGuard.allows(fieldId))) {
             pendingCall.fail(SBIError.SBI_LIVENESS_REQUIRED.getErrorCode(),

@@ -245,12 +245,27 @@ public class LivenessApiImpl implements LivenessPigeon.LivenessApi {
         result.success(null);
     }
 
-    /** How long a liveness pass covers the face capture that follows it. */
+    /** How long a liveness pass covers the face capture that follows it, at most. */
     static final long PASS_MAX_AGE_MS = 120_000L;
+
+    /** Time left for the SBI capture itself inside the freshness window (B-07). */
+    static final long CAPTURE_MARGIN_MS = 15_000L;
+
+    /**
+     * How old a pass may be when its capture starts: never so old that the signed capture could no longer be fresh,
+     * so a slow operator is refused before the capture (REG-SBI-121, no attempt used) rather than failed after it
+     * (LIV-014). Freshness stays the hard check.
+     *
+     * @param policy the workflow's effective policy
+     * @return the window in ms; not positive when {@code bind.freshness.max.age.ms} leaves no time for a capture
+     */
+    static long captureWindowMs(LivenessPolicy policy) {
+        return Math.min(PASS_MAX_AGE_MS, policy.bindFreshnessMaxAgeMs() - CAPTURE_MARGIN_MS);
+    }
 
     /**
      * Whether a face SBI capture may run for a field now: liveness is off for its workflow, or the field's last
-     * check passed within {@link #PASS_MAX_AGE_MS} and that pass is used for this capture. Stopgap until the
+     * check passed within {@link #captureWindowMs} and that pass is used for this capture. Stopgap until the
      * capture binder (B-07) ties the capture to the live session.
      *
      * @param fieldId {@code operatorBiometrics} for operator onboarding; any other field is a resident's
@@ -263,25 +278,27 @@ public class LivenessApiImpl implements LivenessPigeon.LivenessApi {
         }
         Workflow workflow = "operatorBiometrics".equals(fieldId)
                 ? Workflow.OPERATOR_ONBOARDING : Workflow.RESIDENT_REGISTRATION;
-        if (!LivenessConfigLoader.load(config(), workflow).enabled()) {
+        LivenessPolicy policy = LivenessConfigLoader.load(config(), workflow);
+        if (!policy.enabled()) {
             return true;
         }
-        return store.consumePass(workflow.name(), fieldId, PASS_MAX_AGE_MS);
+        return store.consumePass(workflow.name(), fieldId, captureWindowMs(policy));
     }
 
     /**
      * Whether the resident's exception photo may be taken for a field now: liveness is off for
-     * {@code RESIDENT_EXCEPTION_PHOTO}, or the field's last passive check passed within {@link #PASS_MAX_AGE_MS}
+     * {@code RESIDENT_EXCEPTION_PHOTO}, or the field's last passive check passed within {@link #captureWindowMs}
      * and that pass is used for this photo (B-07). A face pass does not cover it.
      *
      * @param fieldId the resident's biometrics field
      * @return true if the photo may be taken
      */
     public boolean exceptionPhotoAllowed(String fieldId) {
-        if (!LivenessConfigLoader.load(config(), Workflow.RESIDENT_EXCEPTION_PHOTO).enabled()) {
+        LivenessPolicy policy = LivenessConfigLoader.load(config(), Workflow.RESIDENT_EXCEPTION_PHOTO);
+        if (!policy.enabled()) {
             return true;
         }
-        return store.consumePass(Workflow.RESIDENT_EXCEPTION_PHOTO.name(), fieldId, PASS_MAX_AGE_MS);
+        return store.consumePass(Workflow.RESIDENT_EXCEPTION_PHOTO.name(), fieldId, captureWindowMs(policy));
     }
 
     /**
@@ -306,10 +323,14 @@ public class LivenessApiImpl implements LivenessPigeon.LivenessApi {
         }
         boolean operatorAuth = OperatorAuthCapture.FIELD_ID.equals(fieldId);
         LivenessResult pass = operatorAuth ? store.lastResult(workflow.name(), fieldId)
-                : store.capturedResult(workflow.name(), fieldId);
+                : store.pendingResult(workflow.name(), fieldId);
         Long passedAt = operatorAuth ? store.passedAtEpochMs(workflow.name(), fieldId)
-                : store.capturedPassedAtEpochMs(workflow.name(), fieldId);
+                : store.pendingPassedAtEpochMs(workflow.name(), fieldId);
         if (pass == null || pass.nonce() == null || passedAt == null) {
+            return null;
+        }
+        if (operatorAuth && System.currentTimeMillis() - passedAt > captureWindowMs(policy)) {
+            // No guard runs before an operatorAuth capture, so its pass is checked for time here
             return null;
         }
         return new CaptureFreshnessTicket(pass.nonce(), passedAt, maxAgeMs, workflow.name(), fieldId);
@@ -331,6 +352,27 @@ public class LivenessApiImpl implements LivenessPigeon.LivenessApi {
         if (summary != null && auditManagerService != null) {
             LivenessPolicy policy = LivenessConfigLoader.load(config(), Workflow.valueOf(ticket.workflow()));
             new LivenessAudit(auditManagerService).captureNotFresh(ticket.workflow(), policy, summary);
+        }
+    }
+
+    /**
+     * The field's capture flow ended: an accepted capture's pass becomes the one its packet evidence carries; a
+     * failed or cancelled one's is dropped, and the face captured before keeps its evidence. {@code operatorAuth}
+     * uses its pass at the match instead.
+     *
+     * @param fieldId  the field
+     * @param modality the modality
+     * @param accepted whether the device's capture was accepted
+     */
+    public void captureFinished(String fieldId, Modality modality, boolean accepted) {
+        Workflow workflow = livenessWorkflow(fieldId, modality);
+        if (workflow == null || OperatorAuthCapture.FIELD_ID.equals(fieldId)) {
+            return;
+        }
+        if (accepted) {
+            store.acceptCapture(workflow.name(), fieldId);
+        } else {
+            store.dropCapture(workflow.name(), fieldId);
         }
     }
 
@@ -430,7 +472,7 @@ public class LivenessApiImpl implements LivenessPigeon.LivenessApi {
 
     /** Whether the held face was captured for the workflow's pass just used: its RCAPTURE carried the pass's nonce. */
     private boolean madeForThisPass(String workflow, String captureNonce) {
-        LivenessResult pass = store.capturedResult(workflow, OperatorAuthCapture.FIELD_ID);
+        LivenessResult pass = store.pendingResult(workflow, OperatorAuthCapture.FIELD_ID);
         return pass != null && pass.nonce() != null && pass.nonce().equalsIgnoreCase(captureNonce);
     }
 
