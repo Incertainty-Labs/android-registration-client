@@ -87,12 +87,22 @@ class LivenessProvider with ChangeNotifier {
   /// Whether this build has the B-21 liveness test screen.
   Future<bool> testScreenAllowed() async => (await hints('RESIDENT_REGISTRATION'))['testScreen'] == 'true';
 
+  /// The test screen's choice that runs the real engine in ACTIVE mode, so every check asks for challenges.
+  static const realEngineChallenges = 'REAL_ENGINE_CHALLENGES';
+
   /// Test screen only: turns liveness on and plays the stub [scenario] (e.g. "PAD") in the next checks; null runs
-  /// the real engine. The screen exists to exercise liveness, even where the server leaves it off.
+  /// the real engine, and [realEngineChallenges] the real engine with challenges every time. The screen exists to
+  /// exercise liveness, even where the server leaves it off.
   /// Returns null, or the PlatformException code when the build refuses it.
   Future<String?> useTestScenario(String? scenario) async {
+    var overrides = 'enabled=true';
+    if (scenario == realEngineChallenges) {
+      overrides = 'enabled=true;mode=ACTIVE';
+    } else if (scenario != null) {
+      overrides = 'enabled=true;stub.force=$scenario';
+    }
     try {
-      await _service.setTestOverrides(scenario == null ? 'enabled=true' : 'enabled=true;stub.force=$scenario');
+      await _service.setTestOverrides(overrides);
       return null;
     } on PlatformException catch (e) {
       return e.code;

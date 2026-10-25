@@ -88,6 +88,21 @@ void main() {
     expect(service.testOverrides, 'enabled=true');
   });
 
+  testWidgets('B-07 the real engine can be made to ask for challenges every time', (tester) async {
+    await tester.pumpWidget(app(const LivenessTestPage()));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('liveness-test-scenario')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Real engine (challenges)').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('liveness-test-start')));
+    await tester.pump();
+
+    expect(service.testOverrides, 'enabled=true;mode=ACTIVE');
+    expect(service.starts, 1);
+  });
+
   testWidgets('B-21 the field is a test-only id for every workflow', (tester) async {
     await tester.pumpWidget(app(const LivenessTestPage()));
     await tester.pumpAndSettle();
