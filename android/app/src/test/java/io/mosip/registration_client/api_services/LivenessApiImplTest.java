@@ -21,7 +21,9 @@ import java.util.Map;
 
 import io.mosip.registration.clientmanager.constant.AuditEvent;
 import io.mosip.registration.clientmanager.constant.Components;
+import io.mosip.registration.clientmanager.constant.Modality;
 import io.mosip.registration.clientmanager.dto.registration.BiometricsDto;
+import io.mosip.registration.clientmanager.dto.sbi.CaptureFreshnessTicket;
 import io.mosip.registration.clientmanager.service.FaceAuthService;
 import io.mosip.registration.clientmanager.spi.AuditManagerService;
 import io.mosip.registration.clientmanager.repository.GlobalParamRepository;
@@ -72,12 +74,23 @@ public class LivenessApiImplTest {
         when(globalParams.getGlobalParamsByPattern(PREFIX + "%")).thenReturn(synced);
         when(localConfig.getLocalConfigurations()).thenReturn(localPreferences);
         activity = Robolectric.buildActivity(Activity.class).setup().get();
-        LivenessSessionStore.shared().reset(WORKFLOW, FACE);
+        resetStore();
     }
 
     @After
     public void tearDown() {
-        LivenessSessionStore.shared().reset(WORKFLOW, FACE);
+        resetStore();
+    }
+
+    /** Every key these tests write in the shared store, so no test sees another's pass. */
+    private static void resetStore() {
+        LivenessSessionStore store = LivenessSessionStore.shared();
+        store.reset(WORKFLOW, FACE);
+        store.reset(EXCEPTION_PHOTO, FACE);
+        for (String workflow : new String[] {"OPERATOR_LOGIN", PACKET_AUTH, "SUPERVISOR_EXCEPTION_AUTH",
+                "SUPERVISOR_EOD_AUTH", "OPERATOR_ONBOARDING"}) {
+            store.reset(workflow, OperatorAuthCapture.FIELD_ID);
+        }
     }
 
     @Test
@@ -251,7 +264,7 @@ public class LivenessApiImplTest {
     public void tcAnd10_faceAuth_liveFaceThatMatches_isAuthenticated() {
         LivenessApiImpl api = faceAuthApi();
         passLiveness(api, PACKET_AUTH);
-        authCapture.hold(Collections.singletonList(new BiometricsDto()));
+        holdFace(Collections.singletonList(new BiometricsDto()));
         when(faceAuth.authenticate(eq(OPERATOR), anyList())).thenReturn(FaceAuthService.Outcome.MATCHED);
         Reply<LivenessPigeon.AuthResultDto> reply = new Reply<>();
 
@@ -292,7 +305,7 @@ public class LivenessApiImplTest {
     @Test
     public void tcAnd10_faceAuth_withoutALivenessPass_neverMatches() {
         LivenessApiImpl api = faceAuthApi();
-        authCapture.hold(Collections.singletonList(new BiometricsDto()));
+        holdFace(Collections.singletonList(new BiometricsDto()));
         Reply<LivenessPigeon.AuthResultDto> reply = new Reply<>();
 
         api.authenticateWithFace(OPERATOR, PACKET_AUTH, reply);
@@ -327,7 +340,7 @@ public class LivenessApiImplTest {
 
     @Test
     public void tcAnd10_seed_isRefusedWithoutTheTestScreen() {
-        authCapture.hold(Collections.singletonList(new BiometricsDto()));
+        holdFace(Collections.singletonList(new BiometricsDto()));
         Reply<Void> reply = new Reply<>();
 
         LivenessApiImpl fieldBuild = api("enabled=true");
@@ -344,7 +357,7 @@ public class LivenessApiImplTest {
         LivenessApiImpl api = api("enabled=true", true);
         api.setFaceAuth(faceAuth, authCapture, audit);
         List<BiometricsDto> face = Collections.singletonList(new BiometricsDto());
-        authCapture.hold(face);
+        holdFace(face);
         when(faceAuth.seedTemplate(OPERATOR, face)).thenReturn(FaceAuthService.SeedOutcome.SAVED);
         Reply<Void> reply = new Reply<>();
 
@@ -359,7 +372,7 @@ public class LivenessApiImplTest {
     public void tcAnd10_seed_neverReplacesAnOnboardedTemplate() {
         LivenessApiImpl api = api("enabled=true", true);
         api.setFaceAuth(faceAuth, authCapture, audit);
-        authCapture.hold(Collections.singletonList(new BiometricsDto()));
+        holdFace(Collections.singletonList(new BiometricsDto()));
         when(faceAuth.seedTemplate(eq(OPERATOR), anyList())).thenReturn(FaceAuthService.SeedOutcome.ENROLLED);
         Reply<Void> reply = new Reply<>();
 
@@ -385,7 +398,7 @@ public class LivenessApiImplTest {
         LivenessApiImpl fieldBuild = api("enabled=true");
         fieldBuild.setFaceAuth(faceAuth, authCapture, audit);
         passLiveness(fieldBuild, PACKET_AUTH);
-        authCapture.hold(Collections.singletonList(new BiometricsDto()));
+        holdFace(Collections.singletonList(new BiometricsDto()));
         Reply<LivenessPigeon.AuthResultDto> reply = new Reply<>();
 
         fieldBuild.authenticateWithFace(OPERATOR, PACKET_AUTH, reply);
@@ -612,8 +625,119 @@ public class LivenessApiImplTest {
         return reply.value;
     }
 
+    /** The session nonce of every pass these tests make. */
+    private static final String NONCE = "0123456789abcdef0123456789abcdef";
+
     private static LivenessResult passed() {
-        return LivenessResult.builder(SessionState.PASSED, Decision.LIVE).passiveScore(0.93).build();
+        return LivenessResult.builder(SessionState.PASSED, Decision.LIVE).passiveScore(0.93).nonce(NONCE).build();
+    }
+
+    /** Holds [faces] as the SBI capture that was requested with the passes' nonce, as BiometricsDetailsApi does. */
+    private void holdFace(List<BiometricsDto> faces) {
+        authCapture.begin(NONCE);
+        authCapture.hold(faces);
+    }
+
+    @Test
+    public void tcFresh_faceCapture_carriesTheNonceAndPassTimeOfThePassItUsed() {
+        LivenessApiImpl api = api("enabled=true");
+        mappedWith(api, passed());
+        assertTrue(api.faceCaptureAllowed(FACE));
+
+        CaptureFreshnessTicket ticket = api.captureTicket(FACE, Modality.FACE);
+
+        assertEquals(NONCE, ticket.nonce());
+        assertEquals(WORKFLOW, ticket.workflow());
+        assertEquals(LivenessSessionStore.shared().capturedPassedAtEpochMs(WORKFLOW, FACE).longValue(),
+                ticket.referenceEpochMs());
+        assertEquals(60_000L, ticket.maxAgeMs());
+    }
+
+    @Test
+    public void tcFresh_freshnessWindow_comesFromTheConfig() {
+        LivenessApiImpl api = api("enabled=true;bind.freshness.max.age.ms=30000");
+        mappedWith(api, passed());
+        api.faceCaptureAllowed(FACE);
+
+        assertEquals(30_000L, api.captureTicket(FACE, Modality.FACE).maxAgeMs());
+    }
+
+    @Test
+    public void tcFresh_faceCaptureWithLivenessOnButNoUsedPass_hasNoTicket() {
+        assertNull(api("enabled=true").captureTicket(FACE, Modality.FACE));
+    }
+
+    @Test
+    public void tcFresh_livenessOff_aNewNonceAndTheRequestTime() {
+        long before = System.currentTimeMillis();
+
+        CaptureFreshnessTicket ticket = api(null).captureTicket(FACE, Modality.FACE);
+
+        assertNull(ticket.workflow());
+        assertTrue(ticket.nonce(), ticket.nonce().matches("[0-9a-f]{32}"));
+        assertTrue(ticket.referenceEpochMs() >= before && ticket.referenceEpochMs() <= System.currentTimeMillis());
+        assertFalse(ticket.nonce().equals(api(null).captureTicket(FACE, Modality.FACE).nonce()));
+    }
+
+    @Test
+    public void tcFresh_otherModalities_getANewNonceEvenWithLivenessOn() {
+        CaptureFreshnessTicket ticket = api("enabled=true").captureTicket(FACE, Modality.FINGERPRINT_SLAB_LEFT);
+
+        assertNull(ticket.workflow());
+        assertTrue(ticket.nonce().matches("[0-9a-f]{32}"));
+    }
+
+    @Test
+    public void tcFresh_exceptionPhoto_carriesItsOwnPass() {
+        LivenessApiImpl api = api("enabled=true");
+        checkedUnder(api, EXCEPTION_PHOTO, passed());
+        assertTrue(api.exceptionPhotoAllowed(FACE));
+
+        CaptureFreshnessTicket ticket = api.captureTicket(FACE, Modality.EXCEPTION_PHOTO);
+
+        assertEquals(EXCEPTION_PHOTO, ticket.workflow());
+        assertEquals(NONCE, ticket.nonce());
+    }
+
+    @Test
+    public void tcFresh_operatorAuth_carriesItsLatestUnusedPass() {
+        LivenessApiImpl api = faceAuthApi();
+        passLiveness(api, PACKET_AUTH);
+
+        CaptureFreshnessTicket ticket = api.captureTicket(OperatorAuthCapture.FIELD_ID, Modality.FACE);
+
+        assertEquals(PACKET_AUTH, ticket.workflow());
+        assertEquals(NONCE, ticket.nonce());
+        assertEquals(LivenessSessionStore.shared().passedAtEpochMs(PACKET_AUTH, OperatorAuthCapture.FIELD_ID)
+                .longValue(), ticket.referenceEpochMs());
+    }
+
+    @Test
+    public void tcFresh_staleCapture_failsTheAttemptWithLiv014AndIsAudited() {
+        LivenessApiImpl api = faceAuthApi();
+        mappedWith(api, passed());
+        api.faceCaptureAllowed(FACE);
+
+        api.captureNotFresh(api.captureTicket(FACE, Modality.FACE), "signed timestamp is 61000 ms from the reference");
+
+        assertEquals(LivenessErrorCode.CAPTURE_BINDING_FAILED,
+                LivenessSessionStore.shared().lastResult(WORKFLOW, FACE).errorCode());
+        verify(audit).auditWithArguments(eq(AuditEvent.LIVENESS_FAILED), anyString(), anyString(),
+                eq(WORKFLOW), eq("LIV-014"), eq("1"), eq("3"));
+    }
+
+    @Test
+    public void tcFresh_faceAuth_captureMadeForAnotherCheck_neverMatches() {
+        LivenessApiImpl api = faceAuthApi();
+        passLiveness(api, PACKET_AUTH);
+        authCapture.begin("ffffffffffffffffffffffffffffffff");
+        authCapture.hold(Collections.singletonList(new BiometricsDto()));
+        Reply<LivenessPigeon.AuthResultDto> reply = new Reply<>();
+
+        api.authenticateWithFace(OPERATOR, PACKET_AUTH, reply);
+
+        assertEquals("LIVENESS_REQUIRED", reply.value.getErrorCode());
+        verify(faceAuth, never()).authenticate(anyString(), anyList());
     }
 
     private LivenessApiImpl api(String overrides) {
@@ -644,7 +768,7 @@ public class LivenessApiImplTest {
     private LivenessPigeon.AuthResultDto authenticateWith(FaceAuthService.Outcome outcome) {
         LivenessApiImpl api = faceAuthApi();
         passLiveness(api, PACKET_AUTH);
-        authCapture.hold(Collections.singletonList(new BiometricsDto()));
+        holdFace(Collections.singletonList(new BiometricsDto()));
         when(faceAuth.authenticate(eq(OPERATOR), anyList())).thenReturn(outcome);
         Reply<LivenessPigeon.AuthResultDto> reply = new Reply<>();
         api.authenticateWithFace(OPERATOR, PACKET_AUTH, reply);

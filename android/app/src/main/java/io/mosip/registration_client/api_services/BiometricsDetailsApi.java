@@ -23,6 +23,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectWriter;
 import com.gemalto.jp2.JP2Decoder;
 
+import java.security.SecureRandom;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
@@ -50,8 +51,12 @@ import io.mosip.registration.clientmanager.constant.SBIError;
 import io.mosip.registration.clientmanager.dto.registration.BiometricsDto;
 import io.mosip.registration.clientmanager.dto.registration.RegistrationDto;
 import io.mosip.registration.clientmanager.dto.sbi.CaptureRequest;
+import io.mosip.registration.clientmanager.dto.sbi.CaptureFreshnessTicket;
 import io.mosip.registration.clientmanager.dto.sbi.DiscoverRequest;
 import io.mosip.registration.clientmanager.exception.BiometricsServiceException;
+import io.mosip.registration.clientmanager.exception.CaptureNotFreshException;
+import io.mosip.registration.liveness.binding.CaptureFreshness;
+import io.mosip.registration.liveness.config.LivenessConfigLoader;
 import io.mosip.registration.clientmanager.exception.ClientCheckedException;
 import io.mosip.registration.clientmanager.repository.GlobalParamRepository;
 import io.mosip.registration.clientmanager.service.Biometrics095Service;
@@ -154,6 +159,48 @@ public class BiometricsDetailsApi implements BiometricsPigeon.BiometricsApi {
     }
 
     private FaceCaptureGuard exceptionPhotoGuard = fieldId -> true;
+
+    /**
+     * Gives each RCAPTURE what it must prove to be fresh, and hears about a capture that was not (B-07 capture
+     * freshness); the app's is {@code LivenessApiImpl}.
+     */
+    public interface CaptureFreshnessSource {
+        /**
+         * @param fieldId  the field captured
+         * @param modality the modality captured
+         * @return the capture's ticket, or null to refuse the capture: liveness is on and no pass covers it
+         */
+        CaptureFreshnessTicket captureTicket(String fieldId, Modality modality);
+
+        /**
+         * @param ticket the stale capture's ticket
+         * @param reason why it is not fresh, for the audit only
+         */
+        void captureNotFresh(CaptureFreshnessTicket ticket, String reason);
+    }
+
+    private static final SecureRandom RANDOM = new SecureRandom();
+
+    /** Without liveness wired: a new nonce per capture, checked against when the request was sent. */
+    private CaptureFreshnessSource captureFreshness = new CaptureFreshnessSource() {
+        @Override
+        public CaptureFreshnessTicket captureTicket(String fieldId, Modality modality) {
+            return new CaptureFreshnessTicket(CaptureFreshness.newNonce(RANDOM), System.currentTimeMillis(),
+                    LivenessConfigLoader.DEFAULT_BIND_FRESHNESS_MAX_AGE_MS, null, fieldId);
+        }
+
+        @Override
+        public void captureNotFresh(CaptureFreshnessTicket ticket, String reason) {
+        }
+    };
+
+    /** The ticket of the RCAPTURE in progress; null when none. */
+    private CaptureFreshnessTicket captureTicket;
+
+    /** @param source gives each capture its freshness ticket (B-07) */
+    public void setCaptureFreshness(CaptureFreshnessSource source) {
+        this.captureFreshness = source;
+    }
 
     /** @param guard refuses an exception photo that no fresh passive liveness pass covers (B-07) */
     public void setExceptionPhotoGuard(FaceCaptureGuard guard) {
@@ -1053,8 +1100,15 @@ public class BiometricsDetailsApi implements BiometricsPigeon.BiometricsApi {
             intent.setAction(callbackId + RegistrationConstants.R_CAPTURE_INTENT_ACTION);
             queryPackage(intent);
             Log.e(TAG, "Initiating capture request : ");
+            captureTicket = captureFreshness.captureTicket(fieldId, currentModality);
+            if (captureTicket == null) {
+                // Liveness is on but no pass covers this capture, so it is never requested
+                pendingCall.fail(SBIError.SBI_LIVENESS_REQUIRED.getErrorCode(),
+                        SBIError.SBI_LIVENESS_REQUIRED.getErrorMessage());
+                return;
+            }
             CaptureRequest captureRequest = biometricsService.getRCaptureRequest(currentModality, deviceId,
-                    getExceptionAttributes());
+                    getExceptionAttributes(), captureTicket.nonce());
             if (fieldId.equals(OPERATOR_BIOMETRICS)) {
                 userOnboardService.setCaptureTransactionId(captureRequest.getTransactionId());
             } else if (fieldId.equals(OperatorAuthCapture.FIELD_ID)) {
@@ -1177,17 +1231,20 @@ public class BiometricsDetailsApi implements BiometricsPigeon.BiometricsApi {
     }
 
     public void parseRCaptureResponse(Bundle bundle) {
+        CaptureFreshnessTicket ticket = captureTicket;
+        captureTicket = null;
         try {
 
             Uri uri = bundle.getParcelable(RegistrationConstants.SBI_INTENT_RESPONSE_KEY);
             InputStream respData = activity.getContentResolver().openInputStream(uri);
             boolean isOperatorOnboarding = fieldId.equals(OPERATOR_BIOMETRICS);
             boolean isOperatorAuth = fieldId.equals(OperatorAuthCapture.FIELD_ID);
-            String transactionId = isOperatorOnboarding ? userOnboardService.getCaptureTransactionId()
-                    : isOperatorAuth ? operatorAuthCapture.transactionId()
-                    : registrationService.getRegistrationDto().getCaptureTransactionId();
+            if (ticket == null) {
+                // No capture was requested with a ticket: fail closed
+                throw new CaptureNotFreshException("no capture ticket");
+            }
             List<BiometricsDto> biometricsDtoList = biometricsService.handleRCaptureResponse(currentModality, respData,
-                    getExceptionAttributes(), transactionId, isOperatorOnboarding);
+                    getExceptionAttributes(), ticket, isOperatorOnboarding);
             if (isOperatorAuth) {
                 if (biometricsDtoList.isEmpty()) {
                     pendingCall.fail(SBIError.SBI_RCAPTURE_ERROR.getErrorCode(),
@@ -1247,6 +1304,13 @@ public class BiometricsDetailsApi implements BiometricsPigeon.BiometricsApi {
                 pendingCall.complete("Ok");
             }
 
+        } catch (CaptureNotFreshException e) {
+            auditManagerService.audit(AuditEvent.R_CAPTURE_PARSE_FAILED, Components.REGISTRATION, e.getErrorCode());
+            Log.e(TAG, "R-Capture not fresh: " + e.reason());
+            if (ticket != null) {
+                captureFreshness.captureNotFresh(ticket, e.reason());
+            }
+            pendingCall.fail(e.getErrorCode(), e.getErrorText());
         } catch (BiometricsServiceException e) {
             auditManagerService.audit(AuditEvent.R_CAPTURE_PARSE_FAILED, Components.REGISTRATION, e.getMessage());
             Log.e(TAG, "R-Capture failed: " + e.getErrorCode(), e);

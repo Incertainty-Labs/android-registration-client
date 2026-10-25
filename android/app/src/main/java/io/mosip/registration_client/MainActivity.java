@@ -73,6 +73,8 @@ import io.mosip.registration.transliterationmanager.service.TransliterationServi
 import io.mosip.registration_client.api_services.AuditDetailsApi;
 import io.mosip.registration_client.api_services.AuthenticationApi;
 import io.mosip.registration_client.api_services.BiometricsDetailsApi;
+import io.mosip.registration.clientmanager.constant.Modality;
+import io.mosip.registration.clientmanager.dto.sbi.CaptureFreshnessTicket;
 import io.mosip.registration_client.api_services.LivenessApiImpl;
 import io.mosip.registration_client.api_services.OperatorAuthCapture;
 import io.mosip.registration_client.api_services.CommonDetailsApi;
@@ -420,6 +422,17 @@ public class MainActivity extends FlutterActivity {
         livenessApi.setCallbackActivity(this);
         biometricsDetailsApi.setFaceCaptureGuard(livenessApi::faceCaptureAllowed);
         biometricsDetailsApi.setExceptionPhotoGuard(livenessApi::exceptionPhotoAllowed);
+        biometricsDetailsApi.setCaptureFreshness(new BiometricsDetailsApi.CaptureFreshnessSource() {
+            @Override
+            public CaptureFreshnessTicket captureTicket(String fieldId, Modality modality) {
+                return livenessApi.captureTicket(fieldId, modality);
+            }
+
+            @Override
+            public void captureNotFresh(CaptureFreshnessTicket ticket, String reason) {
+                livenessApi.captureNotFresh(ticket, reason);
+            }
+        });
         biometricsDetailsApi.setOperatorAuthCapture(operatorAuthCapture);
         RegistrationDataPigeon.RegistrationDataApi.setup(flutterEngine.getDartExecutor().getBinaryMessenger(), registrationApi);
         PacketAuthPigeon.PacketAuthApi.setup(flutterEngine.getDartExecutor().getBinaryMessenger(), packetAuthenticationApi);

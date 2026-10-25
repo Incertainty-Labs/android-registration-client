@@ -6,6 +6,7 @@ import android.util.Log;
 
 import androidx.annotation.NonNull;
 
+import java.security.SecureRandom;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -22,6 +23,9 @@ import io.mosip.registration.clientmanager.spi.AuditManagerService;
 import io.mosip.registration.clientmanager.spi.LocalConfigService;
 import io.mosip.registration.liveness.api.Decision;
 import io.mosip.registration.liveness.api.LivenessPolicy;
+import io.mosip.registration.clientmanager.constant.Modality;
+import io.mosip.registration.clientmanager.dto.sbi.CaptureFreshnessTicket;
+import io.mosip.registration.liveness.binding.CaptureFreshness;
 import io.mosip.registration.liveness.api.LivenessResult;
 import io.mosip.registration.liveness.api.SessionState;
 import io.mosip.registration.liveness.api.Workflow;
@@ -59,6 +63,7 @@ public class LivenessApiImpl implements LivenessPigeon.LivenessApi {
     private static final String SYNCED_PATTERN = LivenessConfigLoader.PREFIX + "%";
     private static final String DIAGNOSTICS_KEY = LivenessConfigLoader.PREFIX + "diagnostics.enabled";
     private static final String STUB_FORCE_KEY = LivenessConfigLoader.PREFIX + "stub.force";
+    private static final SecureRandom RANDOM = new SecureRandom();
 
     private final GlobalParamRepository globalParamRepository;
     private final LocalConfigService localConfigService;
@@ -280,6 +285,75 @@ public class LivenessApiImpl implements LivenessPigeon.LivenessApi {
     }
 
     /**
+     * What the field's next RCAPTURE must prove to be fresh (B-07, API.md §3.7). A face or exception photo with
+     * liveness on carries the nonce of the pass that let it through and is checked against when that pass passed;
+     * {@code operatorAuth}, whose workflow is known only at the match, carries its latest unused pass. Anything else,
+     * and every capture with liveness off, gets a new nonce and is checked against when the request is sent.
+     *
+     * @param fieldId  the field captured
+     * @param modality the modality captured
+     * @return the ticket, or null when liveness is on and no pass covers the capture (it must not run)
+     */
+    public CaptureFreshnessTicket captureTicket(String fieldId, Modality modality) {
+        Map<String, String> config = config();
+        Workflow workflow = livenessWorkflow(fieldId, modality);
+        LivenessPolicy policy = LivenessConfigLoader.load(config,
+                workflow == null ? Workflow.RESIDENT_REGISTRATION : workflow);
+        long maxAgeMs = policy.bindFreshnessMaxAgeMs();
+        if (workflow == null || !policy.enabled()) {
+            return new CaptureFreshnessTicket(CaptureFreshness.newNonce(RANDOM), System.currentTimeMillis(), maxAgeMs,
+                    null, fieldId);
+        }
+        boolean operatorAuth = OperatorAuthCapture.FIELD_ID.equals(fieldId);
+        LivenessResult pass = operatorAuth ? store.lastResult(workflow.name(), fieldId)
+                : store.capturedResult(workflow.name(), fieldId);
+        Long passedAt = operatorAuth ? store.passedAtEpochMs(workflow.name(), fieldId)
+                : store.capturedPassedAtEpochMs(workflow.name(), fieldId);
+        if (pass == null || pass.nonce() == null || passedAt == null) {
+            return null;
+        }
+        return new CaptureFreshnessTicket(pass.nonce(), passedAt, maxAgeMs, workflow.name(), fieldId);
+    }
+
+    /**
+     * A capture that was not fresh fails its liveness attempt with LIV-014 (TECHNICAL_DESIGN §9.3) and is audited
+     * as a liveness failure. With liveness off there is no attempt to fail; the SBI audit records it.
+     *
+     * @param ticket the stale capture's ticket
+     * @param reason why it was not fresh
+     */
+    public void captureNotFresh(CaptureFreshnessTicket ticket, String reason) {
+        Log.w(TAG, "Capture not fresh for " + ticket.fieldId() + ": " + reason);
+        if (ticket.workflow() == null) {
+            return;
+        }
+        LivenessResultSummary summary = store.rejectCapture(ticket.workflow(), ticket.fieldId());
+        if (summary != null && auditManagerService != null) {
+            LivenessPolicy policy = LivenessConfigLoader.load(config(), Workflow.valueOf(ticket.workflow()));
+            new LivenessAudit(auditManagerService).captureNotFresh(ticket.workflow(), policy, summary);
+        }
+    }
+
+    /**
+     * @return the liveness workflow whose pass covers a capture of this field and modality; for {@code operatorAuth},
+     *         that of its latest unused pass (RESIDENT_REGISTRATION if it has none, for the config); null for a
+     *         modality that has no liveness check
+     */
+    private Workflow livenessWorkflow(String fieldId, Modality modality) {
+        if (modality == Modality.EXCEPTION_PHOTO) {
+            return Workflow.RESIDENT_EXCEPTION_PHOTO;
+        }
+        if (modality != Modality.FACE) {
+            return null;
+        }
+        if (OperatorAuthCapture.FIELD_ID.equals(fieldId)) {
+            String unused = store.unusedPassWorkflow(fieldId);
+            return unused == null ? null : Workflow.valueOf(unused);
+        }
+        return "operatorBiometrics".equals(fieldId) ? Workflow.OPERATOR_ONBOARDING : Workflow.RESIDENT_REGISTRATION;
+    }
+
+    /**
      * Matches the face just captured under {@code operatorAuth} against the user's templates (B-09, API.md §15).
      * The liveness check and the SBI capture run first, from Flutter; this needs the workflow's fresh, unused
      * liveness pass for {@code operatorAuth}, so a face is never matched without a live check. Fails closed: liveness
@@ -295,6 +369,7 @@ public class LivenessApiImpl implements LivenessPigeon.LivenessApi {
             result.error(error(LIVENESS_BAD_REQUEST, "Unknown workflow " + workflow));
             return;
         }
+        String captureNonce = operatorAuthCapture == null ? null : operatorAuthCapture.transactionId();
         List<BiometricsDto> capture = operatorAuthCapture == null ? Collections.emptyList()
                 : operatorAuthCapture.take();
         String errorCode;
@@ -306,7 +381,8 @@ public class LivenessApiImpl implements LivenessPigeon.LivenessApi {
         } else if (!LivenessConfigLoader.load(config(), parsed).enabled()) {
             errorCode = LIVENESS_DISABLED;
             messageKey = "liveness.auth.unavailable";
-        } else if (!store.consumePass(workflow, OperatorAuthCapture.FIELD_ID, AUTH_PASS_MAX_AGE_MS)) {
+        } else if (!store.consumePass(workflow, OperatorAuthCapture.FIELD_ID, AUTH_PASS_MAX_AGE_MS)
+                || !madeForThisPass(workflow, captureNonce)) {
             errorCode = LIVENESS_REQUIRED;
             messageKey = "liveness.fail.try_again";
         } else if (faceAuthService == null) {
@@ -350,6 +426,12 @@ public class LivenessApiImpl implements LivenessPigeon.LivenessApi {
         }
         Log.w(TAG, "Debug face template seeded for " + userId);
         result.success(null);
+    }
+
+    /** Whether the held face was captured for the workflow's pass just used: its RCAPTURE carried the pass's nonce. */
+    private boolean madeForThisPass(String workflow, String captureNonce) {
+        LivenessResult pass = store.capturedResult(workflow, OperatorAuthCapture.FIELD_ID);
+        return pass != null && pass.nonce() != null && pass.nonce().equalsIgnoreCase(captureNonce);
     }
 
     private static String authMessageKey(FaceAuthService.Outcome outcome) {
