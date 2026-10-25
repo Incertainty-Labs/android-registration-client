@@ -93,6 +93,21 @@ final class LivenessAudit {
         }
     }
 
+    /**
+     * A capture after a pass was not fresh (LIV-014, B-07): the attempt failed.
+     *
+     * @param workflow the {@code Workflow} name
+     * @param policy   the policy the check ran under
+     * @param summary  the failed attempt, for the attempt and the limit
+     */
+    void captureNotFresh(String workflow, LivenessPolicy policy, LivenessResultSummary summary) {
+        record(AuditEvent.LIVENESS_FAILED, workflow, LivenessErrorCode.CAPTURE_BINDING_FAILED.code(),
+                String.valueOf(summary.attempt()), String.valueOf(summary.maxAttempts()));
+        if (!summary.retryAllowed()) {
+            record(AuditEvent.LIVENESS_MAX_RETRIES, workflow, policy.onMaxRetries().name());
+        }
+    }
+
     private void record(AuditEvent event, String... arguments) {
         audit.auditWithArguments(event, Components.REGISTRATION.getId(), Components.REGISTRATION.getName(),
                 arguments);

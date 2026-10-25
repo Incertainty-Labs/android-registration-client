@@ -130,8 +130,10 @@ public class LivenessPacketEvidenceTest {
         LivenessPolicy policy = LivenessConfigLoader.load(config, Workflow.RESIDENT_REGISTRATION);
         store.begin(WORKFLOW, FACE, policy, 0);
         store.complete(WORKFLOW, FACE, result, false);
-        // The capture that follows uses the pass (#23 guard), which marks this check as the captured one
+        // The capture that follows uses the pass (#23 guard), and the device's answer is accepted, which marks this
+        // check as the captured one
         store.consumePass(WORKFLOW, FACE, 120_000L);
+        store.acceptCapture(WORKFLOW, FACE);
     }
 
     /** A later check on the same field, with no capture after it. */

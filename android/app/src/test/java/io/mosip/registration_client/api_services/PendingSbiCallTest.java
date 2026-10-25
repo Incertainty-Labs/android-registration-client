@@ -72,4 +72,29 @@ public class PendingSbiCallTest {
         verify(result, times(1)).success("Ok");
         verify(result, never()).error(any(Throwable.class));
     }
+
+    @Test
+    public void tcFresh_aCompletedFlow_tellsItsEndingOnceAsCompleted() {
+        PendingSbiCall call = new PendingSbiCall();
+        call.start(result);
+        java.util.List<Boolean> endings = new java.util.ArrayList<>();
+        call.onEnd(endings::add);
+
+        call.complete("Ok");
+        call.fail("REG-SBI-118", "late");
+
+        assertEquals(java.util.Collections.singletonList(true), endings);
+    }
+
+    @Test
+    public void tcFresh_aFailedFlow_tellsItsEndingAsFailed() {
+        PendingSbiCall call = new PendingSbiCall();
+        call.start(result);
+        java.util.List<Boolean> endings = new java.util.ArrayList<>();
+        call.onEnd(endings::add);
+
+        call.fail("REG-SBI-118", "cancelled");
+
+        assertEquals(java.util.Collections.singletonList(false), endings);
+    }
 }

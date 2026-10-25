@@ -9,7 +9,14 @@ import io.mosip.registration_client.model.BiometricsPigeon;
  */
 final class PendingSbiCall {
 
+    /** Told once how the waiting flow ended. */
+    interface Ending {
+        /** @param completed true when the flow completed (the capture was accepted), false when it failed */
+        void ended(boolean completed);
+    }
+
     private BiometricsPigeon.Result<String> result;
+    private Ending ending;
 
     /**
      * Starts waiting for a flow. While another call is still waiting, the new one is failed at once with
@@ -25,13 +32,20 @@ final class PendingSbiCall {
             return false;
         }
         this.result = result;
+        this.ending = null;
         return true;
+    }
+
+    /** @param ending told once when the waiting flow completes or fails, before Dart gets the reply */
+    void onEnd(Ending ending) {
+        this.ending = ending;
     }
 
     /** @param value the success value sent to Dart */
     void complete(String value) {
         BiometricsPigeon.Result<String> pending = take();
         if (pending != null) {
+            end(true);
             pending.success(value);
         }
     }
@@ -43,7 +57,16 @@ final class PendingSbiCall {
     void fail(String code, String message) {
         BiometricsPigeon.Result<String> pending = take();
         if (pending != null) {
+            end(false);
             pending.error(new BiometricsPigeon.FlutterError(code, message, null));
+        }
+    }
+
+    private void end(boolean completed) {
+        Ending told = ending;
+        ending = null;
+        if (told != null) {
+            told.ended(completed);
         }
     }
 
