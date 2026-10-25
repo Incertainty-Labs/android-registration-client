@@ -58,6 +58,15 @@ public class AssetModelLoaderTest {
         assertEngineError(loader);
     }
 
+    @Test
+    public void tcPerf_engineRunsWithThePhoneTimingsBestOptions() {
+        // Release build on the A059 (8 cores): CPU with 2 threads and the detector on every 3rd frame was fastest;
+        // XNNPACK was no faster, NNAPI 4-5 times slower
+        assertEquals("CPU", AssetModelLoader.OPTIONS.requestedProvider());
+        assertEquals(2, AssetModelLoader.OPTIONS.threads());
+        assertEquals(3, AssetModelLoader.OPTIONS.detectEvery());
+    }
+
     private static void assertEngineError(AssetModelLoader loader) {
         try {
             loader.load();

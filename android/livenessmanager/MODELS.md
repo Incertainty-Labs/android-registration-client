@@ -11,4 +11,8 @@ Files in `src/main/assets/models/`, copied from `mosip-face-liveness/models/` (s
 | `minifasnet_v1se_4.0_80x80.onnx` | MiniFASNet V1SE passive PAD | see `models.json` | see `models.json` | Apache-2.0 | see `models.json` |
 | `face_recognition_sface_2021dec.onnx` | SFace face recognition (for the B-07 match binder, `face-verification`) | 2021dec | see `models.json` | Apache-2.0 | see `models.json` |
 
-`models.json` (bundle 1.0.0) is copied unchanged from `mosip-face-liveness` v0.2.0. `ModelRegistry` checks every file's SHA-256 against it at start; any mismatch or missing file refuses the whole bundle (LIV-013), with no fallback. Every file the manifest lists must be shipped, SFace included (about 37 MB; the B-07 match binder uses it). The ONNX files are stored uncompressed in the APK (`noCompress 'onnx'`).
+`models.json` (bundle 1.0.0) is copied unchanged from `mosip-face-liveness` v0.2.0 (unchanged in v0.2.1). `ModelRegistry` checks every file's SHA-256 against it at start; any mismatch or missing file refuses the whole bundle (LIV-013), with no fallback. Every file the manifest lists must be shipped, SFace included (about 37 MB; the B-07 match binder uses it). The ONNX files are stored uncompressed in the APK (`noCompress 'onnx'`).
+
+**Memory.** While the engine loads, `ModelRegistry` holds every file's bytes, SFace included (about 47 MB in all), and drops them once the sessions are built. Add the ONNX Runtime sessions on top. That is fine on current phones; on low-RAM devices (2 GB or less), watch the start-up peak.
+
+**Speed.** `AssetModelLoader.OPTIONS` runs the engine on CPU with 2 threads and the face detector on every 3rd frame, the fastest setting in the release-build timings on the A059 (`EngineOnDeviceTest`, `-PlivenessTestBuildType=release`). Debuggable builds run the engine's Java about 10 times slower, so time only release builds.

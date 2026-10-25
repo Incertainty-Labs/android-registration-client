@@ -1,6 +1,7 @@
 package io.mosip.registration.livenessmanager.engine;
 
 import android.content.Context;
+import android.util.Log;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -31,6 +32,15 @@ public final class AssetModelLoader implements EngineHolder.Loader {
 
     private static final String DIR = "models/";
 
+    private static final String TAG = "AssetModelLoader";
+
+    /**
+     * The engine's options on phones, from the release-build timings on the A059 (B-07): CPU with 2 threads and the
+     * face detector on every 3rd frame, about 64 ms on a detection frame and 14 ms on a followed one. XNNPACK was no
+     * faster and NNAPI 4-5 times slower.
+     */
+    static final EngineOptions OPTIONS = EngineOptions.withProvider("CPU").threads(2).detectEvery(3);
+
     /** Reads one asset by its path under {@code assets/}. */
     interface AssetReader {
         byte[] read(String assetPath) throws IOException;
@@ -57,7 +67,9 @@ public final class AssetModelLoader implements EngineHolder.Loader {
 
     @Override
     public LivenessEngine load() throws LivenessException {
-        return LivenessEngines.hybrid(registry(), EngineOptions.defaults());
+        LivenessEngine engine = LivenessEngines.hybrid(registry(), OPTIONS);
+        Log.i(TAG, "liveness provider " + engine.info().executionProvider());
+        return engine;
     }
 
     /**

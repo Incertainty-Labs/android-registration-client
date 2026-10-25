@@ -1,9 +1,11 @@
 package io.mosip.registration.livenessmanager.engine;
 
 import android.content.Context;
+import android.content.pm.ApplicationInfo;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
+import android.os.Build;
 import android.os.SystemClock;
 import android.util.Log;
 
@@ -15,14 +17,22 @@ import org.junit.runner.RunWith;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+
+import ai.onnxruntime.OrtSession;
 
 import io.mosip.registration.liveness.api.EngineInfo;
+import io.mosip.registration.liveness.api.FaceAnalyzer;
 import io.mosip.registration.liveness.api.FaceFrame;
 import io.mosip.registration.liveness.api.FaceObservation;
 import io.mosip.registration.liveness.api.LivenessEngine;
-import io.mosip.registration.liveness.api.PadScore;
+import io.mosip.registration.liveness.config.LivenessConfigLoader;
 import io.mosip.registration.liveness.engine.onnx.MiniFasNetPadDetector;
 import io.mosip.registration.liveness.engine.onnx.OnnxFaceAnalyzer;
+import io.mosip.registration.liveness.engine.onnx.Sessions;
+import io.mosip.registration.liveness.engine.onnx.TrackingFaceAnalyzer;
 import io.mosip.registration.liveness.model.ModelRegistry;
 
 import static org.junit.Assert.assertEquals;
@@ -31,15 +41,15 @@ import static org.junit.Assume.assumeTrue;
 
 /**
  * B-07 on a real phone: the shipped model bundle passes its checks and builds the hybrid engine with ONNX Runtime
- * Android, and the per-frame models find the one face in a consented photo. Logs the engine's load time and the
- * milliseconds per frame (face analysis plus both PAD models), for TC-PERF and the engine's budget.
+ * Android, and the per-frame models find the one face in a consented photo under every engine option. Logs the
+ * engine's load time and the speed table, for TC-PERF and the engine's defaults. Time it on a release build
+ * ({@code -PlivenessTestBuildType=release}): debuggable builds run the engine's Java far slower.
  */
 @RunWith(AndroidJUnit4.class)
 public class EngineOnDeviceTest {
 
     private static final String TAG = "EngineOnDeviceTest";
     private static final String PHOTO_ASSET = "consented/b-selfie.jpg";
-    private static final int TIMED_RUNS = 10;
 
     @Test
     public void b07_shippedBundle_buildsTheHybridEngine() throws Exception {
@@ -48,46 +58,93 @@ public class EngineOnDeviceTest {
         long loadMs = SystemClock.elapsedRealtime() - start;
 
         EngineInfo info = engine.info();
-        Log.i(TAG, String.format("engine %s built in %d ms on %s; models %s", info.engineVersion(), loadMs,
-                info.executionProvider(), info.modelVersions()));
+        Log.i(TAG, String.format("engine %s built in %d ms on %s (debuggable %b); models %s", info.engineVersion(),
+                loadMs, info.executionProvider(), debuggable(context()), info.modelVersions()));
         assertTrue(info.modelVersions().keySet().containsAll(java.util.Arrays.asList(
                 "yunet", "facemesh_v2", "blendshape_v2", "minifasnet_v2", "minifasnet_v1se")));
     }
 
+    /**
+     * The speed table for the engine's options (v0.2.1): every provider, thread count and detector interval, on the
+     * consented photo with the engine's own session settings and detector score. Each row: 5 warm-up frames, then
+     * 30 timed; mean and p90 of the analysis on detection and on followed frames, and of both PAD models on the
+     * detection frames (the only frames they run on).
+     */
     @Test
-    public void b07_perFrameModels_findTheOneFaceInAConsentedPhoto() throws Exception {
+    public void b07_speedTable_perProviderThreadsAndDetectorInterval() throws Exception {
         Context context = context();
         assumeTrue("no consented photo at " + PHOTO_ASSET + " (kept out of git; see CONSENT.md)",
                 hasAsset(context, PHOTO_ASSET));
         ModelRegistry registry = AssetModelLoader.fromAssets(context).registry();
         FaceFrame frame = frameOf(BitmapFactory.decodeStream(context.getAssets().open(PHOTO_ASSET)));
+        Log.i(TAG, String.format("debuggable %b, %d cores, Android %s (API %d), %s", debuggable(context),
+                Runtime.getRuntime().availableProcessors(), Build.VERSION.RELEASE, Build.VERSION.SDK_INT, Build.MODEL));
+        Log.i(TAG, "provider | threads | detectEvery | analyze detection mean/p90 | analyze followed mean/p90"
+                + " | PAD mean/p90 (ms)");
 
-        try (OnnxFaceAnalyzer analyzer = OnnxFaceAnalyzer.load(registry, 0.6);
-             MiniFasNetPadDetector v2 = MiniFasNetPadDetector.load(registry, "minifasnet_v2", 2.7);
-             MiniFasNetPadDetector v1se = MiniFasNetPadDetector.load(registry, "minifasnet_v1se", 4.0)) {
-            FaceObservation seen = analyzer.analyze(frame);
-            PadScore first = v2.score(frame, seen);
-            v1se.score(frame, seen);
-
-            long analysisNs = 0;
-            long padNs = 0;
-            for (int i = 0; i < TIMED_RUNS; i++) {
-                long begin = SystemClock.elapsedRealtimeNanos();
-                FaceObservation observation = analyzer.analyze(frame);
-                long analysed = SystemClock.elapsedRealtimeNanos();
-                v2.score(frame, observation);
-                v1se.score(frame, observation);
-                analysisNs += analysed - begin;
-                padNs += SystemClock.elapsedRealtimeNanos() - analysed;
+        for (String requested : new String[] {"CPU", "XNNPACK", "NNAPI"}) {
+            for (int threads : new int[] {0, 2, 4}) {
+                for (int detectEvery : new int[] {1, 3}) {
+                    String provider = Sessions.effectiveProvider(requested);
+                    List<Double> detection = new ArrayList<>();
+                    List<Double> followed = new ArrayList<>();
+                    List<Double> pad = new ArrayList<>();
+                    try (OrtSession.SessionOptions options = Sessions.options(provider, threads);
+                         OnnxFaceAnalyzer analyzer = OnnxFaceAnalyzer.load(registry,
+                                 LivenessConfigLoader.DEFAULT_DETECTOR_MIN_SCORE, options);
+                         MiniFasNetPadDetector v2 = MiniFasNetPadDetector.load(registry, "minifasnet_v2", 2.7,
+                                 options);
+                         MiniFasNetPadDetector v1se = MiniFasNetPadDetector.load(registry, "minifasnet_v1se", 4.0,
+                                 options)) {
+                        TrackingFaceAnalyzer tracker = detectEvery > 1 ? analyzer.tracking(detectEvery) : null;
+                        FaceAnalyzer perSession = tracker != null ? tracker : analyzer;
+                        for (int i = 0; i < WARM_UP + TIMED_FRAMES; i++) {
+                            long begin = System.nanoTime();
+                            FaceObservation seen = perSession.analyze(frame);
+                            long analysed = System.nanoTime();
+                            boolean detected = tracker == null || tracker.detected();
+                            if (detected) {
+                                v2.score(frame, seen);
+                                v1se.score(frame, seen);
+                            }
+                            long scored = System.nanoTime();
+                            assertEquals("faces on frame " + i, 1, seen.faceCount());
+                            if (i < WARM_UP) {
+                                continue;
+                            }
+                            (detected ? detection : followed).add((analysed - begin) / 1e6);
+                            if (detected) {
+                                pad.add((scored - analysed) / 1e6);
+                            }
+                        }
+                    }
+                    Log.i(TAG, String.format("%s | %d | %d | %s | %s | %s", provider, threads, detectEvery,
+                            stats(detection), stats(followed), stats(pad)));
+                }
             }
-            double analysisMs = analysisNs / 1e6 / TIMED_RUNS;
-            double padMs = padNs / 1e6 / TIMED_RUNS;
-            Log.i(TAG, String.format("%dx%d frame: %.1f ms = analysis %.1f + 2 PAD %.1f (%d runs); minifasnet_v2 live"
-                            + " %.3f", frame.width(), frame.height(), analysisMs + padMs, analysisMs, padMs, TIMED_RUNS,
-                    first.liveProbability()));
-
-            assertEquals(1, seen.faceCount());
         }
+    }
+
+    private static final int WARM_UP = 5;
+    private static final int TIMED_FRAMES = 30;
+
+    /** @return "mean/p90" in ms, or "-" when there were none */
+    private static String stats(List<Double> ms) {
+        if (ms.isEmpty()) {
+            return "-";
+        }
+        List<Double> sorted = new ArrayList<>(ms);
+        Collections.sort(sorted);
+        double sum = 0;
+        for (double v : sorted) {
+            sum += v;
+        }
+        double p90 = sorted.get((int) Math.ceil(0.9 * sorted.size()) - 1);
+        return String.format("%.1f/%.1f", sum / sorted.size(), p90);
+    }
+
+    private static boolean debuggable(Context context) {
+        return (context.getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0;
     }
 
     private static Context context() {

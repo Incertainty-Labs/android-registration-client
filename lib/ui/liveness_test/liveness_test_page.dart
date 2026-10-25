@@ -165,6 +165,8 @@ class _LivenessTestPageState extends State<LivenessTestPage> {
           decoration: const InputDecoration(labelText: 'Engine'),
           items: [
             const DropdownMenuItem<String?>(value: null, child: Text('Real engine')),
+            const DropdownMenuItem<String?>(
+                value: LivenessProvider.realEngineChallenges, child: Text('Real engine (challenges)')),
             for (final s in livenessTestScenarios) DropdownMenuItem<String?>(value: s, child: Text(s)),
           ],
           onChanged: (value) => setState(() => scenario = value),
