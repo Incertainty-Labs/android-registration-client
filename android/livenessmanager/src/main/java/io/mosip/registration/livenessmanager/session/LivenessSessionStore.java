@@ -25,9 +25,15 @@ public final class LivenessSessionStore {
     private final Map<String, LivenessResult> results = new HashMap<>();
     /** The policy each field last began under, for the packet evidence (LIVENESS_THRESHOLD, LIVENESS_MODE). */
     private final Map<String, LivenessPolicy> policies = new HashMap<>();
-    /** The result and policy whose pass let the field's last face capture through, for the packet evidence. */
+    /**
+     * The result and policy whose pass let the field's last accepted face capture through, for the packet evidence.
+     * A pass that let a capture start is pending until the device's answer is accepted; a capture that fails never
+     * replaces the evidence of the face already captured.
+     */
     private final Map<String, LivenessResult> capturedResults = new HashMap<>();
     private final Map<String, LivenessPolicy> capturedPolicies = new HashMap<>();
+    private final Map<String, LivenessResult> pendingResults = new HashMap<>();
+    private final Map<String, LivenessPolicy> pendingPolicies = new HashMap<>();
     /** When each field's last check passed, until a capture uses the pass. */
     private final Map<String, Long> passedAtMs = new HashMap<>();
     /**
@@ -35,6 +41,7 @@ public final class LivenessSessionStore {
      * freshness, B-07): until a capture uses the pass, then for that capture.
      */
     private final Map<String, Long> passedAtEpochMs = new HashMap<>();
+    private final Map<String, Long> pendingPassedAtEpochMs = new HashMap<>();
     private final Map<String, Long> capturedPassedAtEpochMs = new HashMap<>();
     private final LongSupplier clockMs;
     private final LongSupplier wallClockMs;
@@ -135,6 +142,7 @@ public final class LivenessSessionStore {
         results.put(key, stale);
         passedAtMs.remove(key);
         passedAtEpochMs.remove(key);
+        dropPending(key);
         return LivenessResultSummary.of(stale, attempt, tracker.limit(), retryAllowed, false);
     }
 
@@ -158,7 +166,8 @@ public final class LivenessSessionStore {
 
     /**
      * Uses the field's pass for one SBI capture, so a face capture can never run on a missing, failed, stale or
-     * already used liveness check (stopgap until the capture binder, B-07).
+     * already used liveness check (stopgap until the capture binder, B-07). The pass is pending until
+     * {@link #acceptCapture} or {@link #dropCapture}.
      *
      * @param workflow the {@code Workflow} name
      * @param fieldId  the field
@@ -170,13 +179,66 @@ public final class LivenessSessionStore {
         Long passedAt = passedAtMs.remove(key);
         boolean fresh = passedAt != null && clockMs.getAsLong() - passedAt <= maxAgeMs;
         Long passedAtEpoch = passedAtEpochMs.remove(key);
+        dropPending(key);
         if (fresh) {
-            // The check that allowed this capture is the one the packet's face must carry, whatever runs later
-            capturedResults.put(key, results.get(key));
-            capturedPolicies.put(key, policies.get(key));
-            capturedPassedAtEpochMs.put(key, passedAtEpoch);
+            pendingResults.put(key, results.get(key));
+            pendingPolicies.put(key, policies.get(key));
+            pendingPassedAtEpochMs.put(key, passedAtEpoch);
         }
         return fresh;
+    }
+
+    /**
+     * The device's capture was accepted: the pass that let it through is the one the packet's face must carry,
+     * whatever runs later.
+     *
+     * @param workflow the {@code Workflow} name
+     * @param fieldId  the field
+     * @return true if a pending pass became the captured one; false when none was pending
+     */
+    public synchronized boolean acceptCapture(String workflow, String fieldId) {
+        String key = key(workflow, fieldId);
+        if (!pendingResults.containsKey(key)) {
+            return false;
+        }
+        capturedResults.put(key, pendingResults.remove(key));
+        capturedPolicies.put(key, pendingPolicies.remove(key));
+        capturedPassedAtEpochMs.put(key, pendingPassedAtEpochMs.remove(key));
+        return true;
+    }
+
+    /**
+     * The capture failed or was cancelled: its pass is dropped, and the face captured before keeps its evidence.
+     *
+     * @param workflow the {@code Workflow} name
+     * @param fieldId  the field
+     */
+    public synchronized void dropCapture(String workflow, String fieldId) {
+        dropPending(key(workflow, fieldId));
+    }
+
+    /**
+     * @param workflow the {@code Workflow} name
+     * @param fieldId  the field
+     * @return the result whose pass let the capture in progress start, or null when none is pending
+     */
+    public synchronized LivenessResult pendingResult(String workflow, String fieldId) {
+        return pendingResults.get(key(workflow, fieldId));
+    }
+
+    /**
+     * @param workflow the {@code Workflow} name
+     * @param fieldId  the field
+     * @return when that pass passed, epoch milliseconds, or null when none is pending
+     */
+    public synchronized Long pendingPassedAtEpochMs(String workflow, String fieldId) {
+        return pendingPassedAtEpochMs.get(key(workflow, fieldId));
+    }
+
+    private void dropPending(String key) {
+        pendingResults.remove(key);
+        pendingPolicies.remove(key);
+        pendingPassedAtEpochMs.remove(key);
     }
 
     /**
@@ -219,7 +281,7 @@ public final class LivenessSessionStore {
     /**
      * @param workflow the {@code Workflow} name
      * @param fieldId  the field
-     * @return the result whose pass let the field's last face capture through, or null when none did
+     * @return the result whose pass let the field's last accepted face capture through, or null when none did
      */
     public synchronized LivenessResult capturedResult(String workflow, String fieldId) {
         return capturedResults.get(key(workflow, fieldId));
@@ -268,6 +330,7 @@ public final class LivenessSessionStore {
         passedAtMs.remove(key);
         passedAtEpochMs.remove(key);
         capturedPassedAtEpochMs.remove(key);
+        dropPending(key);
     }
 
     private static String key(String workflow, String fieldId) {

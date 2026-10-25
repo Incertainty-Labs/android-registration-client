@@ -30,7 +30,9 @@ public class LivenessSessionStoreTest {
     private static final String WORKFLOW = "RESIDENT_REGISTRATION";
     private static final String FACE = "individualBiometrics";
 
-    private final LivenessSessionStore store = new LivenessSessionStore();
+    private final long[] wallClock = {0L};
+    private final LivenessSessionStore store = new LivenessSessionStore(() -> System.nanoTime() / 1_000_000L,
+            () -> wallClock[0]);
 
     @Test
     public void tcAnd_firstBegin_isAttemptOne() {
@@ -190,6 +192,7 @@ public class LivenessSessionStoreTest {
         LivenessResult passA = passed();
         store.complete(WORKFLOW, FACE, passA, false);
         store.consumePass(WORKFLOW, FACE, 120_000L);
+        store.acceptCapture(WORKFLOW, FACE);
 
         store.begin(WORKFLOW, FACE, policy(3), 0);
         store.complete(WORKFLOW, FACE, challengeFailed(), false);
@@ -204,6 +207,7 @@ public class LivenessSessionStoreTest {
         LivenessResult passA = passed();
         store.complete(WORKFLOW, FACE, passA, false);
         store.consumePass(WORKFLOW, FACE, 120_000L);
+        store.acceptCapture(WORKFLOW, FACE);
 
         store.begin(WORKFLOW, FACE, policy(3), 0);
         store.complete(WORKFLOW, FACE, passed(), false);
@@ -218,10 +222,68 @@ public class LivenessSessionStoreTest {
         assertNull(store.capturedResult(WORKFLOW, FACE));
 
         store.consumePass(WORKFLOW, FACE, 120_000L);
+        store.acceptCapture(WORKFLOW, FACE);
         store.reset(WORKFLOW, FACE);
 
         assertNull(store.capturedResult(WORKFLOW, FACE));
         assertNull(store.capturedPolicy(WORKFLOW, FACE));
+    }
+
+    @Test
+    public void tcFresh_aUsedPass_isPendingUntilTheDeviceAnswers() {
+        store.begin(WORKFLOW, FACE, policy(3), 0);
+        LivenessResult pass = passed();
+        store.complete(WORKFLOW, FACE, pass, false);
+
+        store.consumePass(WORKFLOW, FACE, 120_000L);
+
+        assertSame(pass, store.pendingResult(WORKFLOW, FACE));
+        assertNull(store.capturedResult(WORKFLOW, FACE));
+        assertTrue(store.acceptCapture(WORKFLOW, FACE));
+        assertSame(pass, store.capturedResult(WORKFLOW, FACE));
+        assertNull(store.pendingResult(WORKFLOW, FACE));
+    }
+
+    @Test
+    public void tcFresh_aStaleRetake_leavesTheEarlierFacesEvidence() {
+        LivenessResult passA = capturedPass();
+        store.begin(WORKFLOW, FACE, policy(3), 0);
+        store.complete(WORKFLOW, FACE, passed(), false);
+        store.consumePass(WORKFLOW, FACE, 120_000L);
+
+        store.rejectCapture(WORKFLOW, FACE);
+
+        assertSame(passA, store.capturedResult(WORKFLOW, FACE));
+        assertEquals(Long.valueOf(1_000L), store.capturedPassedAtEpochMs(WORKFLOW, FACE));
+        assertNull(store.pendingResult(WORKFLOW, FACE));
+        assertFalse("nothing left to accept", store.acceptCapture(WORKFLOW, FACE));
+        assertSame(passA, store.capturedResult(WORKFLOW, FACE));
+    }
+
+    @Test
+    public void tcFresh_aFailedRetake_leavesTheEarlierFacesEvidence() {
+        LivenessResult passA = capturedPass();
+        store.begin(WORKFLOW, FACE, policy(3), 0);
+        store.complete(WORKFLOW, FACE, passed(), false);
+        store.consumePass(WORKFLOW, FACE, 120_000L);
+
+        store.dropCapture(WORKFLOW, FACE);
+
+        assertSame(passA, store.capturedResult(WORKFLOW, FACE));
+        assertNotNull(store.capturedPolicy(WORKFLOW, FACE));
+        assertNull(store.pendingResult(WORKFLOW, FACE));
+    }
+
+    /** A first check whose capture the device answered, passed at wall-clock 1000. */
+    private LivenessResult capturedPass() {
+        wallClock[0] = 1_000L;
+        store.begin(WORKFLOW, FACE, policy(3), 0);
+        LivenessResult passA = passed();
+        store.complete(WORKFLOW, FACE, passA, false);
+        store.consumePass(WORKFLOW, FACE, 120_000L);
+        store.acceptCapture(WORKFLOW, FACE);
+        wallClock[0] = 2_000L;
+        return passA;
     }
 
     @Test(expected = IllegalStateException.class)
@@ -240,6 +302,8 @@ public class LivenessSessionStoreTest {
         assertEquals(Long.valueOf(1_700_000_000_000L), timed.passedAtEpochMs(WORKFLOW, FACE));
         assertTrue(timed.consumePass(WORKFLOW, FACE, 120_000L));
         assertNull(timed.passedAtEpochMs(WORKFLOW, FACE));
+        assertEquals(Long.valueOf(1_700_000_000_000L), timed.pendingPassedAtEpochMs(WORKFLOW, FACE));
+        timed.acceptCapture(WORKFLOW, FACE);
         assertEquals(Long.valueOf(1_700_000_000_000L), timed.capturedPassedAtEpochMs(WORKFLOW, FACE));
     }
 
