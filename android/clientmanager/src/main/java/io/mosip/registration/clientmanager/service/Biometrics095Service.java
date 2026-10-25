@@ -11,9 +11,13 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.io.InputStream;
+import java.security.SecureRandom;
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.Arrays;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Collections;
@@ -21,7 +25,6 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
 import javax.inject.Inject;
 
@@ -45,6 +48,7 @@ import io.mosip.registration.clientmanager.constant.SBIError;
 import io.mosip.registration.clientmanager.dto.registration.BiometricsDto;
 import io.mosip.registration.clientmanager.dto.sbi.CaptureBioDetail;
 import io.mosip.registration.clientmanager.dto.sbi.CaptureDto;
+import io.mosip.registration.clientmanager.dto.sbi.CaptureFreshnessTicket;
 import io.mosip.registration.clientmanager.dto.sbi.CaptureRequest;
 import io.mosip.registration.clientmanager.dto.sbi.CaptureRespDetail;
 import io.mosip.registration.clientmanager.dto.sbi.CaptureResponse;
@@ -52,6 +56,7 @@ import io.mosip.registration.clientmanager.dto.sbi.DeviceDto;
 import io.mosip.registration.clientmanager.dto.sbi.DigitalId;
 import io.mosip.registration.clientmanager.dto.sbi.InfoResponse;
 import io.mosip.registration.clientmanager.exception.BiometricsServiceException;
+import io.mosip.registration.clientmanager.exception.CaptureNotFreshException;
 import io.mosip.registration.clientmanager.repository.GlobalParamRepository;
 import io.mosip.registration.clientmanager.util.DeviceCertificationPolicy;
 import io.mosip.registration.clientmanager.repository.UserBiometricRepository;
@@ -64,6 +69,7 @@ import io.mosip.registration.keymanager.dto.JWTSignatureVerifyRequestDto;
 import io.mosip.registration.keymanager.dto.JWTSignatureVerifyResponseDto;
 import io.mosip.registration.keymanager.spi.ClientCryptoManagerService;
 import io.mosip.registration.keymanager.util.KeyManagerConstant;
+import io.mosip.registration.liveness.binding.CaptureFreshness;
 
 public class Biometrics095Service extends BiometricsService {
 
@@ -74,6 +80,7 @@ public class Biometrics095Service extends BiometricsService {
     private static final String SPEC_VERSION = "0.9.5";
     private static final String DEVICE_STATUS_READY = "Ready";
     private static final String DEFAULT_PURPOSE = "Registration";
+    private static final SecureRandom RANDOM = new SecureRandom();
 
     private String rCaptureTrustDomain = TRUST_DOMAIN_DEVICE;
     private String deviceInfoTrustDomain = TRUST_DOMAIN_DEVICE;
@@ -108,6 +115,15 @@ public class Biometrics095Service extends BiometricsService {
     }
 
     public CaptureRequest getRCaptureRequest(Modality modality, String deviceId, List<String> exceptionAttributes) {
+        return getRCaptureRequest(modality, deviceId, exceptionAttributes, CaptureFreshness.newNonce(RANDOM));
+    }
+
+    /**
+     * @param transactionId the capture's nonce (B-07 capture freshness): the liveness session's nonce, or a new one
+     *                      when liveness is off; the device signs it back
+     */
+    public CaptureRequest getRCaptureRequest(Modality modality, String deviceId, List<String> exceptionAttributes,
+                                             String transactionId) {
         CaptureRequest captureRequest = new CaptureRequest();
         Map<String, Object> deviceInfo = (Map<String, Object>) BIO_DEVICES.get(modality);
         captureRequest.setEnv(getServerActiveProfile());
@@ -117,7 +133,7 @@ public class Biometrics095Service extends BiometricsService {
         captureRequest.setTimeout(timeout);
         captureRequest.setSpecVersion(deviceInfo != null ? (String) deviceInfo.get("specVersion") : SPEC_VERSION);
         captureRequest.setCaptureTime(LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
-        captureRequest.setTransactionId(UUID.randomUUID().toString().toUpperCase());
+        captureRequest.setTransactionId(transactionId);
         List<CaptureBioDetail> list = new ArrayList<>();
         CaptureBioDetail detail = new CaptureBioDetail();
         detail.setType(modality == Modality.EXCEPTION_PHOTO ? Modality.FACE.getSingleType().value() : modality.getSingleType().value());
@@ -142,6 +158,25 @@ public class Biometrics095Service extends BiometricsService {
 
     public List<BiometricsDto> handleRCaptureResponse(Modality modality, InputStream response, List<String> exceptionAttributes, String transactionId, boolean isOperatorOnboarding)
             throws BiometricsServiceException {
+        return handleRCaptureResponse(modality, response, exceptionAttributes, transactionId, null, isOperatorOnboarding);
+    }
+
+    /**
+     * As {@link #handleRCaptureResponse(Modality, InputStream, List, String, boolean)}, and each signed capture must
+     * be fresh (B-07): it echoes the ticket's nonce and was signed within the ticket's window of its reference time.
+     *
+     * @throws CaptureNotFreshException LIV-014 when a capture is not fresh
+     */
+    public List<BiometricsDto> handleRCaptureResponse(Modality modality, InputStream response, List<String> exceptionAttributes,
+                                                      CaptureFreshnessTicket ticket, boolean isOperatorOnboarding)
+            throws BiometricsServiceException {
+        return handleRCaptureResponse(modality, response, exceptionAttributes, ticket.nonce(), ticket, isOperatorOnboarding);
+    }
+
+    private List<BiometricsDto> handleRCaptureResponse(Modality modality, InputStream response, List<String> exceptionAttributes,
+                                                       String transactionId, CaptureFreshnessTicket ticket,
+                                                       boolean isOperatorOnboarding)
+            throws BiometricsServiceException {
         List<BiometricsDto> biometricsDtoList = new ArrayList<>();
         try {
             CaptureResponse captureResponse = objectMapper.readValue(response, new TypeReference<CaptureResponse>(){});
@@ -163,7 +198,9 @@ public class Biometrics095Service extends BiometricsService {
                 CaptureDto captureDto = objectMapper.readValue(decodedPayload, new TypeReference<CaptureDto>() {});
                 validateResponseTimestamp(captureDto.getTimestamp());
 
-                if (transactionId == null || captureDto.getTransactionId() == null ||
+                if (ticket != null) {
+                    checkFreshness(ticket, captureDto);
+                } else if (transactionId == null || captureDto.getTransactionId() == null ||
                         !captureDto.getTransactionId().equals(transactionId)) {
                     throw new BiometricsServiceException(SBIError.SBI_RCAPTURE_ERROR.getErrorCode(),
                             "RCapture TransactionId Mismatch: request=" + transactionId + " response=" + captureDto.getTransactionId());
@@ -236,6 +273,30 @@ public class Biometrics095Service extends BiometricsService {
         return biometricsDtoList;
     }
 
+
+    /** LIV-014 unless the device signed the ticket's nonce back within its window of the reference time. */
+    private static void checkFreshness(CaptureFreshnessTicket ticket, CaptureDto signed) throws CaptureNotFreshException {
+        long signedAt;
+        try {
+            signedAt = signedEpochMs(signed.getTimestamp());
+        } catch (RuntimeException e) {
+            throw new CaptureNotFreshException("signed timestamp unreadable: " + signed.getTimestamp());
+        }
+        CaptureFreshness.Check check = CaptureFreshness.verify(ticket.nonce(), signed.getTransactionId(), signedAt,
+                ticket.referenceEpochMs(), ticket.maxAgeMs());
+        if (!check.fresh()) {
+            throw new CaptureNotFreshException(check.reason());
+        }
+    }
+
+    /** SBI timestamps are UTC ISO 8601; one without an offset is read as UTC, as {@code validateResponseTimestamp} does. */
+    static long signedEpochMs(String timestamp) {
+        try {
+            return Instant.parse(timestamp).toEpochMilli();
+        } catch (DateTimeParseException e) {
+            return LocalDateTime.parse(timestamp).toInstant(ZoneOffset.UTC).toEpochMilli();
+        }
+    }
 
     public String[] handleDeviceInfoResponse(Modality modality, byte[] response) throws BiometricsServiceException {
         String callbackId = null;
