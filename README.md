@@ -1,5 +1,7 @@
 # android-registration-client
 
+> **PS04 face liveness:** this fork adds face liveness detection to every face capture. See [PS04_LIVENESS.md](PS04_LIVENESS.md) for what it does, how to install, build, configure and test it, and its known limits.
+
 The Android Registration Client is a tablet application that serves as a portable version of the existing desktop Registration Client. It has been developed to support accessibility on all Android devices. The creation of the Android Registration Client was driven by the need to meet the mobility requirements of countries adopting MOSIP.
 
 # Developer Guide
