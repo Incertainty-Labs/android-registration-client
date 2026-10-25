@@ -111,11 +111,22 @@ public class LivenessApiImplTest {
     public void tcAnd02_buildOverride_turnsLivenessOn() {
         Reply<LivenessPigeon.LivenessResultDto> reply = new Reply<>();
 
-        api("enabled=true;stub.force=PASS_ACTIVE").startLiveness(WORKFLOW, FACE, reply);
+        api("enabled=true").startLiveness(WORKFLOW, FACE, reply);
 
         LivenessContract.Request request = LivenessContract.parseRequest(
                 Shadows.shadowOf(activity).getNextStartedActivityForResult().intent);
-        assertEquals("PASS_ACTIVE", request.config().get(PREFIX + "stub.force"));
+        assertEquals("true", request.config().get(PREFIX + "enabled"));
+    }
+
+    @Test
+    public void tcEng_onlyTheTestScreenCanForceTheStub() {
+        synced.put(PREFIX + "stub.force", "PASS_ACTIVE");
+
+        api("enabled=true;stub.force=PAD").startLiveness(WORKFLOW, FACE, new Reply<>());
+
+        LivenessContract.Request request = LivenessContract.parseRequest(
+                Shadows.shadowOf(activity).getNextStartedActivityForResult().intent);
+        assertNull(request.config().get(PREFIX + "stub.force"));
     }
 
     @Test
@@ -548,6 +559,39 @@ public class LivenessApiImplTest {
         mappedWith(api, passed());
 
         assertFalse(api.faceCaptureAllowed("operatorBiometrics"));
+    }
+
+    @Test
+    public void tcAnd05_anExceptionPhotoPass_allowsOneExceptionPhoto() {
+        LivenessApiImpl api = api("enabled=true");
+        checkedUnder(api, EXCEPTION_PHOTO, passed());
+
+        assertTrue(api.exceptionPhotoAllowed(FACE));
+        assertFalse(api.exceptionPhotoAllowed(FACE));
+    }
+
+    @Test
+    public void tcAnd06_aFacePass_doesNotCoverTheExceptionPhoto() {
+        LivenessApiImpl api = api("enabled=true");
+        mappedWith(api, passed());
+
+        assertFalse(api.exceptionPhotoAllowed(FACE));
+        assertTrue(api.faceCaptureAllowed(FACE));
+    }
+
+    @Test
+    public void tcAnd05_livenessOff_allowsTheExceptionPhoto() {
+        assertTrue(api(null).exceptionPhotoAllowed(FACE));
+    }
+
+    private static final String EXCEPTION_PHOTO = "RESIDENT_EXCEPTION_PHOTO";
+
+    /** Runs one check under [workflow] for the resident's field, whose activity returns [result]. */
+    private void checkedUnder(LivenessApiImpl api, String workflow, LivenessResult result) {
+        Reply<LivenessPigeon.LivenessResultDto> reply = new Reply<>();
+        api.startLiveness(workflow, FACE, reply);
+        api.onActivityResult(LivenessContract.REQUEST_CODE, Activity.RESULT_OK, LivenessContract.resultIntent(
+                LivenessSessionStore.shared().complete(workflow, FACE, result, false)));
     }
 
     /** Runs one check whose activity returns [result], and gives the DTO Dart receives. */

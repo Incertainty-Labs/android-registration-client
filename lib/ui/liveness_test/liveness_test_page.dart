@@ -162,9 +162,9 @@ class _LivenessTestPageState extends State<LivenessTestPage> {
         DropdownButtonFormField<String?>(
           key: const Key('liveness-test-scenario'),
           value: scenario,
-          decoration: const InputDecoration(labelText: 'Stub scenario'),
+          decoration: const InputDecoration(labelText: 'Engine'),
           items: [
-            const DropdownMenuItem<String?>(value: null, child: Text('Build default')),
+            const DropdownMenuItem<String?>(value: null, child: Text('Real engine')),
             for (final s in livenessTestScenarios) DropdownMenuItem<String?>(value: s, child: Text(s)),
           ],
           onChanged: (value) => setState(() => scenario = value),

@@ -145,6 +145,16 @@ public class BiometricsDetailsApiSbiFlowTest {
     }
 
     @Test
+    public void tcAnd06_exceptionPhotoWithoutALivenessPass_isRefusedWithoutStartingDiscovery() {
+        api.setExceptionPhotoGuard(fieldId -> false);
+
+        api.invokeDiscoverSbi("individualBiometrics", "Exception", result);
+
+        assertEquals("REG-SBI-121", errorCode());
+        verify(activity, never()).startActivityForResult(any(Intent.class), anyInt());
+    }
+
+    @Test
     public void tcAnd05_otherModalities_skipTheLivenessGuard() {
         api.setFaceCaptureGuard(fieldId -> false);
 

@@ -31,6 +31,7 @@ import io.mosip.registration.liveness.api.FaceFrame;
 import io.mosip.registration.liveness.api.FrameListener;
 import io.mosip.registration.liveness.api.LivenessCallback;
 import io.mosip.registration.liveness.api.LivenessContext;
+import io.mosip.registration.liveness.api.LivenessEngine;
 import io.mosip.registration.liveness.api.LivenessErrorCode;
 import io.mosip.registration.liveness.api.LivenessException;
 import io.mosip.registration.liveness.api.LivenessPolicy;
@@ -44,6 +45,7 @@ import io.mosip.registration.liveness.config.LivenessConfigLoader;
 import io.mosip.registration.liveness.engine.LivenessEngines;
 import io.mosip.registration.livenessmanager.camera.CameraXBinder;
 import io.mosip.registration.livenessmanager.camera.CameraXFrameSource;
+import io.mosip.registration.livenessmanager.engine.EngineHolder;
 import io.mosip.registration.livenessmanager.result.LivenessResultSummary;
 import io.mosip.registration.livenessmanager.session.LivenessSessionStore;
 import io.mosip.registration.livenessmanager.ui.LivenessOverlayView;
@@ -84,6 +86,13 @@ public class LivenessActivity extends ComponentActivity {
     @VisibleForTesting
     static BinderFactory binderFactory = CAMERAX_BINDER;
 
+    /** The app's real engine (B-07); tests replace it. */
+    @VisibleForTesting
+    static EngineHolder engines = EngineHolder.shared();
+
+    /** Set only by the test screen (B-21): plays a scripted stub scenario instead of the real engine. */
+    private static final String STUB_FORCE_KEY = LivenessConfigLoader.PREFIX + "stub.force";
+
     private final LivenessSessionStore store = LivenessSessionStore.shared();
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Runnable hideToast = () -> this.toast.setVisibility(View.GONE);
@@ -107,6 +116,8 @@ public class LivenessActivity extends ComponentActivity {
     private AlertDialog rationale;
     private boolean awaitingSettings;
     private boolean finished;
+    /** Counts session starts, so an engine that arrives for an older start is ignored. */
+    private int sessionGeneration;
 
     private PreviewView preview;
     private LivenessOverlayView overlay;
@@ -228,9 +239,45 @@ public class LivenessActivity extends ComponentActivity {
         pendingError = null;
         model = new LivenessScreenModel();
         render(model.onStateChanged(SessionState.WAITING_FOR_FACE, new UserPrompt(POSITION_KEY, PromptLevel.INFO)));
+        if (request.config().containsKey(STUB_FORCE_KEY)) {
+            beginSession(LivenessEngines.stub(request.config()));
+            return;
+        }
+        // The real engine loads once per app; wait for it, and fail closed (LIV-013) if it cannot load
+        int generation = ++sessionGeneration;
+        engines.whenReady(new EngineHolder.Listener() {
+            @Override
+            public void ready(LivenessEngine engine) {
+                runOnUiThread(() -> {
+                    if (!finished && generation == sessionGeneration) {
+                        beginSession(engine);
+                    }
+                });
+            }
+
+            @Override
+            public void failed(LivenessException error) {
+                runOnUiThread(() -> {
+                    if (!finished && generation == sessionGeneration) {
+                        engineFailed();
+                    }
+                });
+            }
+        });
+    }
+
+    /** S14: the engine cannot run; only Close, which returns the ERROR result (LIV-013). */
+    private void engineFailed() {
+        render(model.onStateChanged(SessionState.ERROR,
+                new UserPrompt(LivenessErrorCode.ENGINE_ERROR.messageKey(), PromptLevel.ERROR)));
+        pendingError = LivenessResult.builder(SessionState.ERROR, Decision.INCONCLUSIVE)
+                .errorCode(LivenessErrorCode.ENGINE_ERROR).build();
+    }
+
+    private void beginSession(LivenessEngine engine) {
         Callback sessionCallback = new Callback();
         CameraXFrameSource frameSource = new CameraXFrameSource(this, binderFactory.create(this, preview));
-        LivenessSession started = LivenessEngines.stub(request.config()).startSession(
+        LivenessSession started = engine.startSession(
                 LivenessContext.builder().workflow(workflow).attempt(attempt).source(frameSource.capabilities())
                         .build(),
                 policy, sessionCallback);

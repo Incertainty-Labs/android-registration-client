@@ -75,9 +75,23 @@ void main() {
     expect(service.starts, 0);
   });
 
-  test('TC-AND-05 the exception photo skips liveness for now', () async {
-    expect(await gate.capture(face, 'Exception', sbi), isTrue);
-    expect(service.starts, 0);
+  test('TC-AND-05 the exception photo is checked under its own passive workflow', () async {
+    final captured = gate.capture(face, 'Exception', sbi);
+    await Future<void>.delayed(Duration.zero);
+    service.pending!.complete(LivenessResultDto(finalState: 'PASSED', decision: 'LIVE'));
+
+    expect(await captured, isTrue);
+    expect(service.lastWorkflow, 'RESIDENT_EXCEPTION_PHOTO');
+    expect(sbiCalls, 1);
+  });
+
+  test('TC-AND-06 a failed exception-photo check never reaches the SBI', () async {
+    final captured = gate.capture(face, 'Exception', sbi);
+    await Future<void>.delayed(Duration.zero);
+    service.pending!.complete(LivenessResultDto(finalState: 'FAILED', decision: 'ATTACK_SUSPECTED'));
+
+    expect(await captured, isFalse);
+    expect(sbiCalls, 0);
   });
 
   test('TC-AND-09 onboarding checks the operator under its own workflow', () async {
@@ -101,5 +115,13 @@ void main() {
     service.pending!.complete(LivenessResultDto(finalState: 'PASSED', decision: 'LIVE'));
 
     expect(captured, throwsA(isA<PlatformException>()));
+  });
+
+  test('TC-AND-05 each modality names the workflow its card and lock follow', () {
+    expect(gate.workflowFor('Face'), LivenessGate.residentWorkflow);
+    expect(gate.workflowFor('Exception'), LivenessGate.exceptionPhotoWorkflow);
+    expect(gate.workflowFor('Iris'), isNull);
+    expect(LivenessGate(LivenessProvider(service: service), workflow: LivenessGate.onboardingWorkflow)
+        .workflowFor('Face'), LivenessGate.onboardingWorkflow);
   });
 }
