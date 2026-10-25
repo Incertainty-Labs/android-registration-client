@@ -89,6 +89,13 @@ public class Biometrics095ServiceFreshnessTest {
     }
 
     @Test
+    public void tcFresh_signedTimestampWithAnOffset_isReadAsThatInstant() throws Exception {
+        assertEquals(1, handle(NONCE, "2026-10-25T15:30:05+05:30").size());
+        assertEquals(PASSED_AT + 5_000L, Biometrics095Service.signedEpochMs("2026-10-25T15:30:05+05:30"));
+        assertEquals(PASSED_AT + 5_000L, Biometrics095Service.signedEpochMs("2026-10-25T10:00:05"));
+    }
+
+    @Test
     public void tcFresh_captureSignedTooLongAfterThePass_failsWithLiv014AndAGenericMessage() {
         CaptureNotFreshException e = assertThrows(CaptureNotFreshException.class,
                 () -> handle(NONCE, "2026-10-25T10:01:01Z"));

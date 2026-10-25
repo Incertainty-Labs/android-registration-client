@@ -14,6 +14,7 @@ import java.io.InputStream;
 import java.security.SecureRandom;
 import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.Arrays;
 import java.time.format.DateTimeFormatter;
@@ -289,12 +290,19 @@ public class Biometrics095Service extends BiometricsService {
         }
     }
 
-    /** SBI timestamps are UTC ISO 8601; one without an offset is read as UTC, as {@code validateResponseTimestamp} does. */
+    /**
+     * SBI timestamps are ISO 8601: UTC ({@code Z}), with an offset (such as {@code +05:30}; older Android runtimes'
+     * {@code Instant.parse} refuses those), or without one, read as UTC as {@code validateResponseTimestamp} does.
+     */
     static long signedEpochMs(String timestamp) {
         try {
             return Instant.parse(timestamp).toEpochMilli();
-        } catch (DateTimeParseException e) {
-            return LocalDateTime.parse(timestamp).toInstant(ZoneOffset.UTC).toEpochMilli();
+        } catch (DateTimeParseException utcOnly) {
+            try {
+                return OffsetDateTime.parse(timestamp).toInstant().toEpochMilli();
+            } catch (DateTimeParseException noOffset) {
+                return LocalDateTime.parse(timestamp).toInstant(ZoneOffset.UTC).toEpochMilli();
+            }
         }
     }
 
