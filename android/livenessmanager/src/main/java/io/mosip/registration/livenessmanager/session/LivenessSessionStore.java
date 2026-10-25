@@ -30,7 +30,14 @@ public final class LivenessSessionStore {
     private final Map<String, LivenessPolicy> capturedPolicies = new HashMap<>();
     /** When each field's last check passed, until a capture uses the pass. */
     private final Map<String, Long> passedAtMs = new HashMap<>();
+    /**
+     * The same moment on the wall clock, which the device's signed capture timestamp is compared with (capture
+     * freshness, B-07): until a capture uses the pass, then for that capture.
+     */
+    private final Map<String, Long> passedAtEpochMs = new HashMap<>();
+    private final Map<String, Long> capturedPassedAtEpochMs = new HashMap<>();
     private final LongSupplier clockMs;
+    private final LongSupplier wallClockMs;
 
     /**
      * A store on a monotonic clock, so changing the device's date and time can neither keep a pass fresh nor expire
@@ -41,7 +48,12 @@ public final class LivenessSessionStore {
     }
 
     LivenessSessionStore(LongSupplier clockMs) {
+        this(clockMs, System::currentTimeMillis);
+    }
+
+    LivenessSessionStore(LongSupplier clockMs, LongSupplier wallClockMs) {
         this.clockMs = clockMs;
+        this.wallClockMs = wallClockMs;
     }
 
     /** @return the store shared by the activity and the Pigeon API */
@@ -93,10 +105,37 @@ public final class LivenessSessionStore {
         results.put(key, result);
         if (result.finalState() == SessionState.PASSED) {
             passedAtMs.put(key, clockMs.getAsLong());
+            passedAtEpochMs.put(key, wallClockMs.getAsLong());
         } else {
             passedAtMs.remove(key);
+            passedAtEpochMs.remove(key);
         }
         return LivenessResultSummary.of(result, attempt, tracker.limit(), retryAllowed, diagnosticsEnabled);
+    }
+
+    /**
+     * Fails the field's attempt because the signed capture that followed its pass was not fresh (LIV-014, B-07): the
+     * device did not echo the session nonce, or signed the capture too far from when the check passed. It counts as
+     * a failed attempt (TECHNICAL_DESIGN §9.3).
+     *
+     * @param workflow the {@code Workflow} name
+     * @param fieldId  the field
+     * @return what the UI may show, or null if no attempt was begun for the field
+     */
+    public synchronized LivenessResultSummary rejectCapture(String workflow, String fieldId) {
+        String key = key(workflow, fieldId);
+        AttemptTracker tracker = trackers.get(key);
+        if (tracker == null) {
+            return null;
+        }
+        int attempt = tracker.current();
+        LivenessResult stale = LivenessResult.builder(SessionState.FAILED, Decision.ATTACK_SUSPECTED)
+                .errorCode(LivenessErrorCode.CAPTURE_BINDING_FAILED).build();
+        boolean retryAllowed = tracker.record(stale);
+        results.put(key, stale);
+        passedAtMs.remove(key);
+        passedAtEpochMs.remove(key);
+        return LivenessResultSummary.of(stale, attempt, tracker.limit(), retryAllowed, false);
     }
 
     /**
@@ -130,12 +169,51 @@ public final class LivenessSessionStore {
         String key = key(workflow, fieldId);
         Long passedAt = passedAtMs.remove(key);
         boolean fresh = passedAt != null && clockMs.getAsLong() - passedAt <= maxAgeMs;
+        Long passedAtEpoch = passedAtEpochMs.remove(key);
         if (fresh) {
             // The check that allowed this capture is the one the packet's face must carry, whatever runs later
             capturedResults.put(key, results.get(key));
             capturedPolicies.put(key, policies.get(key));
+            capturedPassedAtEpochMs.put(key, passedAtEpoch);
         }
         return fresh;
+    }
+
+    /**
+     * @param workflow the {@code Workflow} name
+     * @param fieldId  the field
+     * @return when the field's unused pass passed, epoch milliseconds, or null when it has none
+     */
+    public synchronized Long passedAtEpochMs(String workflow, String fieldId) {
+        return passedAtEpochMs.get(key(workflow, fieldId));
+    }
+
+    /**
+     * @param workflow the {@code Workflow} name
+     * @param fieldId  the field
+     * @return when the pass that let the field's last capture through passed, epoch milliseconds, or null
+     */
+    public synchronized Long capturedPassedAtEpochMs(String workflow, String fieldId) {
+        return capturedPassedAtEpochMs.get(key(workflow, fieldId));
+    }
+
+    /**
+     * For a field whose workflow is known only after the capture ({@code operatorAuth}, B-09).
+     *
+     * @param fieldId the field
+     * @return the workflow of the field's latest unused pass, or null when it has none
+     */
+    public synchronized String unusedPassWorkflow(String fieldId) {
+        String latest = null;
+        long latestAt = Long.MIN_VALUE;
+        String suffix = "/" + fieldId;
+        for (Map.Entry<String, Long> pass : passedAtMs.entrySet()) {
+            if (pass.getKey().endsWith(suffix) && (latest == null || pass.getValue() > latestAt)) {
+                latest = pass.getKey().substring(0, pass.getKey().length() - suffix.length());
+                latestAt = pass.getValue();
+            }
+        }
+        return latest;
     }
 
     /**
@@ -188,6 +266,8 @@ public final class LivenessSessionStore {
         capturedResults.remove(key);
         capturedPolicies.remove(key);
         passedAtMs.remove(key);
+        passedAtEpochMs.remove(key);
+        capturedPassedAtEpochMs.remove(key);
     }
 
     private static String key(String workflow, String fieldId) {

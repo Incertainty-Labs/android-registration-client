@@ -229,6 +229,66 @@ public class LivenessSessionStoreTest {
         store.complete(WORKFLOW, FACE, passed(), false);
     }
 
+    @Test
+    public void tcFresh_aPass_keepsWhenItPassedOnTheWallClockForTheCaptureThatUsesIt() {
+        long[] wall = {1_700_000_000_000L};
+        LivenessSessionStore timed = new LivenessSessionStore(() -> 5L, () -> wall[0]);
+        timed.begin(WORKFLOW, FACE, policy(3), 0);
+        timed.complete(WORKFLOW, FACE, passed(), false);
+        wall[0] += 9_000L;
+
+        assertEquals(Long.valueOf(1_700_000_000_000L), timed.passedAtEpochMs(WORKFLOW, FACE));
+        assertTrue(timed.consumePass(WORKFLOW, FACE, 120_000L));
+        assertNull(timed.passedAtEpochMs(WORKFLOW, FACE));
+        assertEquals(Long.valueOf(1_700_000_000_000L), timed.capturedPassedAtEpochMs(WORKFLOW, FACE));
+    }
+
+    @Test
+    public void tcFresh_aFailedCheck_hasNoPassTime() {
+        store.begin(WORKFLOW, FACE, policy(3), 0);
+        store.complete(WORKFLOW, FACE, challengeFailed(), false);
+
+        assertNull(store.passedAtEpochMs(WORKFLOW, FACE));
+        assertNull(store.capturedPassedAtEpochMs(WORKFLOW, FACE));
+    }
+
+    @Test
+    public void tcFresh_unusedPassWorkflow_isTheFieldsLatestUnusedPass() {
+        long[] now = {10L};
+        LivenessSessionStore timed = new LivenessSessionStore(() -> now[0], () -> now[0]);
+        for (String workflow : new String[] {"OPERATOR_LOGIN", "OPERATOR_PACKET_AUTH"}) {
+            timed.begin(workflow, "operatorAuth", policy(3), 0);
+            timed.complete(workflow, "operatorAuth", passed(), false);
+            now[0] += 10L;
+        }
+
+        assertEquals("OPERATOR_PACKET_AUTH", timed.unusedPassWorkflow("operatorAuth"));
+        timed.consumePass("OPERATOR_PACKET_AUTH", "operatorAuth", 120_000L);
+        assertEquals("OPERATOR_LOGIN", timed.unusedPassWorkflow("operatorAuth"));
+        assertNull(timed.unusedPassWorkflow(FACE));
+    }
+
+    @Test
+    public void tcFresh_aStaleCapture_failsTheAttemptWithLiv014() {
+        store.begin(WORKFLOW, FACE, policy(3), 0);
+        store.complete(WORKFLOW, FACE, passed(), false);
+        store.consumePass(WORKFLOW, FACE, 120_000L);
+
+        LivenessResultSummary summary = store.rejectCapture(WORKFLOW, FACE);
+
+        assertEquals(1, summary.attempt());
+        assertEquals("FAILED", summary.finalState());
+        assertEquals("LIV-014", summary.errorCode());
+        assertTrue(summary.retryAllowed());
+        assertEquals(LivenessErrorCode.CAPTURE_BINDING_FAILED, store.lastResult(WORKFLOW, FACE).errorCode());
+        assertEquals(2, store.begin(WORKFLOW, FACE, policy(3), 0));
+    }
+
+    @Test
+    public void tcFresh_aStaleCaptureWithoutACheck_recordsNothing() {
+        assertNull(store.rejectCapture(WORKFLOW, FACE));
+    }
+
     private static LivenessPolicy policy(int maxRetries) {
         Map<String, String> config = new HashMap<>();
         config.put(LivenessConfigLoader.PREFIX + "enabled", "true");
