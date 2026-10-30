@@ -4,6 +4,8 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.function.LongSupplier;
 
+import androidx.annotation.VisibleForTesting;
+
 import io.mosip.registration.liveness.api.Decision;
 import io.mosip.registration.liveness.api.LivenessErrorCode;
 import io.mosip.registration.liveness.api.LivenessPolicy;
@@ -58,7 +60,12 @@ public final class LivenessSessionStore {
         this(clockMs, System::currentTimeMillis);
     }
 
-    LivenessSessionStore(LongSupplier clockMs, LongSupplier wallClockMs) {
+    /**
+     * @param clockMs     the monotonic clock passes age on, in ms
+     * @param wallClockMs the wall clock signed capture times are compared with, in epoch ms
+     */
+    @VisibleForTesting
+    public LivenessSessionStore(LongSupplier clockMs, LongSupplier wallClockMs) {
         this.clockMs = clockMs;
         this.wallClockMs = wallClockMs;
     }

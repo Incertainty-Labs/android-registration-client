@@ -281,6 +281,28 @@ public class LivenessApiImplTest {
     }
 
     @Test
+    public void tcAnd10_faceAuth_matchesWithinTheSameWindowAsItsCapture() {
+        long[] now = {1_000L};
+        LivenessSessionStore clocked = new LivenessSessionStore(() -> now[0], () -> now[0]);
+        LivenessApiImpl api = new LivenessApiImpl(globalParams, localConfig, "enabled=true", true, clocked);
+        api.setCallbackActivity(activity);
+        api.setFaceAuth(faceAuth, authCapture, audit);
+        api.startLiveness(PACKET_AUTH, OperatorAuthCapture.FIELD_ID, new Reply<>());
+        Shadows.shadowOf(activity).getNextStartedActivityForResult();
+        api.onActivityResult(LivenessContract.REQUEST_CODE, Activity.RESULT_OK, LivenessContract.resultIntent(
+                clocked.complete(PACKET_AUTH, OperatorAuthCapture.FIELD_ID, passed(), false)));
+        // 38 s after the pass: inside the 45 s an operatorAuth capture may start in (captureWindowMs)
+        now[0] += 38_000L;
+        holdFace(Collections.singletonList(new BiometricsDto()));
+        when(faceAuth.authenticate(eq(OPERATOR), anyList())).thenReturn(FaceAuthService.Outcome.MATCHED);
+        Reply<LivenessPigeon.AuthResultDto> reply = new Reply<>();
+
+        api.authenticateWithFace(OPERATOR, PACKET_AUTH, reply);
+
+        assertEquals(Boolean.TRUE, reply.value.getAuthenticated());
+    }
+
+    @Test
     public void tcAnd11_faceAuth_otherFace_isNotAuthenticated() {
         LivenessPigeon.AuthResultDto dto = authenticateWith(FaceAuthService.Outcome.NOT_MATCHED);
 
