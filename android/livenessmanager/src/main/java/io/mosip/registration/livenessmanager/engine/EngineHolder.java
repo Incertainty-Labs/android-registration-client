@@ -60,7 +60,9 @@ public final class EngineHolder {
                 built = loader.load();
             } catch (LivenessException e) {
                 error = e;
-            } catch (RuntimeException e) {
+            } catch (Throwable e) {
+                // An Error too (no ONNX Runtime library, out of memory reading the models): it runs on the app's own
+                // start-up thread, so it must neither crash the app nor leave the waiters waiting
                 error = new LivenessException(LivenessErrorCode.ENGINE_ERROR, "Engine failed to load: " + e.getMessage());
             }
             finish(built, error);

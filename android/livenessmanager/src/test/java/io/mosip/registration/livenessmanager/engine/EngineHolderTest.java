@@ -79,6 +79,37 @@ public class EngineHolderTest {
     }
 
     @Test
+    public void tcEng_anErrorWhileLoading_isLiv013AndNeverEscapes() {
+        EngineHolder holder = new EngineHolder();
+        holder.start(background, () -> {
+            throw new UnsatisfiedLinkError("libonnxruntime.so not found");
+        });
+        Recorder waiter = new Recorder();
+        holder.whenReady(waiter);
+
+        runQueued();
+
+        assertEquals(LivenessErrorCode.ENGINE_ERROR, waiter.error.errorCode());
+        assertTrue(waiter.error.getMessage().contains("libonnxruntime.so not found"));
+    }
+
+    @Test
+    public void tcEng_startAfterAnErrorWhileLoading_triesAgain() {
+        EngineHolder holder = new EngineHolder();
+        holder.start(background, () -> {
+            throw new OutOfMemoryError("models");
+        });
+        runQueued();
+
+        holder.start(background, () -> engine);
+        runQueued();
+        Recorder waiter = new Recorder();
+        holder.whenReady(waiter);
+
+        assertSame(engine, waiter.engine);
+    }
+
+    @Test
     public void tcEng_startAfterAFailure_triesAgain() {
         EngineHolder holder = new EngineHolder();
         holder.start(background, () -> {
