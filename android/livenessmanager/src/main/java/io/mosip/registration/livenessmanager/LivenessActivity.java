@@ -216,6 +216,8 @@ public class LivenessActivity extends ComponentActivity {
         if (rationale != null) {
             rationale.dismiss();
         }
+        // An engine that becomes ready after this must not start a session on a screen that is gone
+        sessionGeneration++;
         stopSession();
         handler.removeCallbacksAndMessages(null);
         super.onDestroy();

@@ -379,6 +379,21 @@ public class LivenessActivityTest {
     }
 
     @Test
+    public void tcEng_engineReadyAfterTheScreenIsGone_startsNoSession() {
+        java.util.List<Runnable> loading = new java.util.ArrayList<>();
+        EngineHolder holder = new EngineHolder();
+        holder.start(loading::add, () -> LivenessEngines.stub(Collections.emptyMap()));
+        LivenessActivity.engines = holder;
+        ActivityController<LivenessActivity> controller = launch(null);
+        controller.pause().stop().destroy();
+
+        loading.remove(0).run();
+        Shadows.shadowOf(Looper.getMainLooper()).idle();
+
+        assertNull("a session started on a destroyed screen", binder.analyzer);
+    }
+
+    @Test
     public void tcEng_engineThatFailsToLoad_offersOnlyCloseAndReturnsLiv013() {
         EngineHolder holder = new EngineHolder();
         holder.start(Runnable::run, () -> {
