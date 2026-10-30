@@ -106,6 +106,20 @@ void main() {
       expect(find.text('Use face'), findsNothing);
     });
 
+    testWidgets('TC-AND-10 each auth dialog starts with fresh attempts, whoever used them up before', (tester) async {
+      final earlier = provider.start(workflow, FaceAuth.fieldId);
+      service.pending!.complete(LivenessResultDto(
+          finalState: 'FAILED', decision: 'INCONCLUSIVE', errorCode: 'LIV-011', retryAllowed: false));
+      await earlier;
+      expect(provider.blockedFor(workflow, FaceAuth.fieldId), isTrue);
+
+      await pumpButton(tester, () {});
+
+      expect(service.resets, contains('$workflow/${FaceAuth.fieldId}'));
+      expect(provider.blockedFor(workflow, FaceAuth.fieldId), isFalse);
+      expect(find.text('Use face'), findsOneWidget);
+    });
+
     testWidgets('TC-AND-10 a match authenticates', (tester) async {
       var authenticated = 0;
       await pumpButton(tester, () => authenticated++);

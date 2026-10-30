@@ -117,6 +117,19 @@ void main() {
     expect(captured, throwsA(isA<PlatformException>()));
   });
 
+  for (final code in ['REG-LIV-014', 'REG-SBI-121']) {
+    test('TC-AND-06 a capture the native side rejects ($code) no longer shows the face as passed', () async {
+      final provider = LivenessProvider(service: service);
+      final rejecting = LivenessGate(provider);
+      final captured = rejecting.capture(face, 'Face', () async => throw PlatformException(code: code));
+      await Future<void>.delayed(Duration.zero);
+      service.pending!.complete(LivenessResultDto(finalState: 'PASSED', decision: 'LIVE'));
+
+      await expectLater(captured, throwsA(isA<PlatformException>()));
+      expect(provider.passedFor(LivenessGate.residentWorkflow, face), isFalse);
+    });
+  }
+
   test('TC-AND-05 each modality names the workflow its card and lock follow', () {
     expect(gate.workflowFor('Face'), LivenessGate.residentWorkflow);
     expect(gate.workflowFor('Exception'), LivenessGate.exceptionPhotoWorkflow);

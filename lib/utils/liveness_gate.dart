@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import 'package:registration_client/provider/liveness_provider.dart';
 
 /// Puts the face liveness check in front of a face capture (B-06 residents, B-19 operator onboarding;
@@ -51,7 +52,18 @@ class LivenessGate {
     if (!liveFace && !livenessOff) {
       return false;
     }
-    await sbiCapture();
+    try {
+      await sbiCapture();
+    } on PlatformException catch (e) {
+      if (rejectedPassCodes.contains(e.code)) {
+        _provider.forgetPass(checked, fieldId);
+      }
+      rethrow;
+    }
     return true;
   }
+
+  /// SBI errors with which the native side refuses the capture a pass let through: the capture was not fresh
+  /// (REG-LIV-014), or no fresh, unused pass covered it (REG-SBI-121).
+  static const rejectedPassCodes = {'REG-LIV-014', 'REG-SBI-121'};
 }

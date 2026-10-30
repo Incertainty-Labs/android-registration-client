@@ -20,6 +20,9 @@ class FakeLivenessService implements LivenessService {
   Object? resetError;
   String? testOverrides;
   Object? testOverridesError;
+
+  /// When set, setTestOverrides waits for it.
+  Completer<void>? heldTestOverrides;
   AuthResultDto authResult = AuthResultDto(authenticated: true);
   final List<String> authCalls = [];
   final List<String> seeded = [];
@@ -66,6 +69,7 @@ class FakeLivenessService implements LivenessService {
   @override
   Future<void> setTestOverrides(String overrides) async {
     if (testOverridesError != null) throw testOverridesError!;
+    if (heldTestOverrides != null) await heldTestOverrides!.future;
     testOverrides = overrides;
   }
 }
@@ -228,6 +232,20 @@ void main() {
     expect(service.resets.toSet(), {'$workflow/$face', '$workflow/$introducer'});
     expect(provider.resultFor(workflow, face), isNull);
     expect(provider.passedFor('OPERATOR_LOGIN', 'operatorAuth'), isTrue);
+  });
+
+  test('TC-AND-07 a new registration also frees the exception photo the last resident used up', () async {
+    const exception = 'RESIDENT_EXCEPTION_PHOTO';
+    final photo = provider.start(exception, face);
+    service.pending!.complete(LivenessResultDto(
+        finalState: 'FAILED', decision: 'INCONCLUSIVE', errorCode: 'LIV-011', retryAllowed: false));
+    await photo;
+    expect(provider.blockedFor(exception, face), isTrue);
+
+    await provider.startNewRegistration();
+
+    expect(provider.blockedFor(exception, face), isFalse);
+    expect(service.resets, contains('$exception/$face'));
   });
 
   test('TC-AND-02 resetAttempts refused natively reports false', () async {

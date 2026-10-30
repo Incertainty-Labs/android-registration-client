@@ -166,6 +166,20 @@ class LivenessProvider with ChangeNotifier {
     }
   }
 
+  /// The native side refused the capture the field's pass let through (stale, or no fresh pass), so the pass is
+  /// gone: the field no longer shows as passed and the next capture checks again.
+  void forgetPass(String workflow, String fieldId) {
+    if (_results.remove(_key(workflow, fieldId)) != null) {
+      notifyListeners();
+    }
+  }
+
+  /// Starts a new resident's attempts: their face and their exception photo (TECHNICAL_DESIGN §6.2, one resident).
+  Future<void> startNewRegistration() async {
+    await resetWorkflow('RESIDENT_REGISTRATION');
+    await resetWorkflow('RESIDENT_EXCEPTION_PHOTO');
+  }
+
   /// Starts every field [workflow] ran again, e.g. when a new registration starts.
   Future<void> resetWorkflow(String workflow) async {
     for (final fieldId in List.of(_fields[workflow] ?? <String>{})) {

@@ -35,6 +35,14 @@ class _FaceAuthButtonState extends State<FaceAuthButton> {
   late final LivenessProvider _provider = context.read<LivenessProvider>();
   late final Future<bool> _available = _isAvailable();
   bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Each auth dialog is one workflow instance (TECHNICAL_DESIGN §6.2): it starts with fresh attempts, so another
+    // user's failures never block this one
+    _provider.resetAttempts(widget.workflow, FaceAuth.fieldId);
+  }
   bool _authenticated = false;
   String? _messageKey;
 
