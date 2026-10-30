@@ -29,6 +29,7 @@ public class LivenessPacketEvidenceTest {
 
     private static final String WORKFLOW = "RESIDENT_REGISTRATION";
     private static final String FACE = "individualBiometrics";
+    private static final String NONCE = "0123456789abcdef0123456789abcdef";
 
     private final LivenessSessionStore store = new LivenessSessionStore();
     private BIR bir;
@@ -124,6 +125,28 @@ public class LivenessPacketEvidenceTest {
         assertFalse(bir.getOthers().containsKey("LIVENESS_DECISION"));
     }
 
+    @Test
+    public void tcAnd18_eachFaceCapture_carriesTheEvidenceOfTheCheckThatAllowedIt() {
+        runCheck(passed("nonce-1", 0.93));
+        runCheck(passed("nonce-2", 0.81));
+        BIR second = new BIR.BIRBuilder().build();
+
+        LivenessPacketEvidence.addTo(store, bir, signedFace("nonce-1"), FACE);
+        LivenessPacketEvidence.addTo(store, second, signedFace("nonce-2"), FACE);
+
+        assertEquals("0.93", bir.getOthers().get("LIVENESS_SCORE"));
+        assertEquals("0.81", second.getOthers().get("LIVENESS_SCORE"));
+    }
+
+    @Test
+    public void tcAnd18_aCaptureNoCheckSignedFor_addsNothing() {
+        runCheck(passed("nonce-1", 0.93));
+
+        LivenessPacketEvidence.addTo(store, bir, signedFace("someone-elses-nonce"), FACE);
+
+        assertFalse(bir.getOthers().containsKey("LIVENESS_DECISION"));
+    }
+
     private void runCheck(LivenessResult result) {
         Map<String, String> config = new HashMap<>();
         config.put(LivenessConfigLoader.PREFIX + "enabled", "true");
@@ -145,14 +168,27 @@ public class LivenessPacketEvidenceTest {
     }
 
     private static LivenessResult passed() {
-        return LivenessResult.builder(SessionState.PASSED, Decision.LIVE).passiveScore(0.93)
+        return LivenessResult.builder(SessionState.PASSED, Decision.LIVE).passiveScore(0.93).nonce(NONCE)
                 .challenges(Arrays.asList(
                         new ChallengeOutcome(ChallengeType.SMILE, ChallengeProgress.PASSED, 900L),
                         new ChallengeOutcome(ChallengeType.NEUTRAL_HOLD, ChallengeProgress.PASSED, 1000L)))
                 .build();
     }
 
+    private static LivenessResult passed(String nonce, double score) {
+        return LivenessResult.builder(SessionState.PASSED, Decision.LIVE).passiveScore(score).nonce(nonce).build();
+    }
+
+    /** A face capture whose signed SBI data echoes {@code transactionId}, as the device signs it. */
+    private static BiometricsDto signedFace(String transactionId) {
+        String decoded = "{\"bioType\":\"Face\",\"transactionId\":\"" + transactionId + "\",\"bioValue\":\"\"}";
+        return new BiometricsDto("Face", null, null, null, false, decoded, null, false, 0, 0.0, 0.0f);
+    }
+
+    /** A face capture signed for the nonce of {@link #passed()}. */
     private static BiometricsDto face(boolean exception) {
-        return new BiometricsDto("Face", null, null, null, exception, null, null, false, 0, 0.0, 0.0f);
+        BiometricsDto signed = signedFace(NONCE);
+        return new BiometricsDto("Face", null, null, null, exception, signed.getDecodedBioResponse(), null, false, 0,
+                0.0, 0.0f);
     }
 }

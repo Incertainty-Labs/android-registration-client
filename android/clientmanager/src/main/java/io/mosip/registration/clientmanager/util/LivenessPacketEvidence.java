@@ -1,5 +1,9 @@
 package io.mosip.registration.clientmanager.util;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import java.io.IOException;
 import java.util.HashMap;
 
 import io.mosip.registration.packetmanager.cbeffutil.jaxbclasses.BIR;
@@ -20,6 +24,7 @@ public final class LivenessPacketEvidence {
 
     private static final String RESIDENT_WORKFLOW = "RESIDENT_REGISTRATION";
     private static final String FACE_MODALITY = "Face";
+    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private LivenessPacketEvidence() {
     }
@@ -37,8 +42,10 @@ public final class LivenessPacketEvidence {
         if (dto == null || !FACE_MODALITY.equalsIgnoreCase(dto.getModality()) || dto.isException()) {
             return;
         }
-        LivenessResult result = store.capturedResult(RESIDENT_WORKFLOW, fieldId);
-        LivenessPolicy policy = store.capturedPolicy(RESIDENT_WORKFLOW, fieldId);
+        // Each face attempt carries the check that let it through, found by the nonce the device signed back
+        String nonce = signedTransactionId(dto);
+        LivenessResult result = store.capturedResult(RESIDENT_WORKFLOW, fieldId, nonce);
+        LivenessPolicy policy = store.capturedPolicy(RESIDENT_WORKFLOW, fieldId, nonce);
         if (result == null || policy == null || result.finalState() != SessionState.PASSED) {
             return;
         }
@@ -46,5 +53,18 @@ public final class LivenessPacketEvidence {
             bir.setOthers(new HashMap<>());
         }
         bir.getOthers().putAll(PacketEvidence.of(result, policy));
+    }
+
+    /** @return the transactionId in the capture's signed SBI data, or null when there is none */
+    private static String signedTransactionId(BiometricsDto dto) {
+        if (dto.getDecodedBioResponse() == null) {
+            return null;
+        }
+        try {
+            JsonNode id = MAPPER.readTree(dto.getDecodedBioResponse()).get("transactionId");
+            return id == null || id.isNull() ? null : id.asText();
+        } catch (IOException e) {
+            return null;
+        }
     }
 }

@@ -32,6 +32,11 @@ public final class LivenessSessionStore {
      */
     private final Map<String, LivenessResult> capturedResults = new HashMap<>();
     private final Map<String, LivenessPolicy> capturedPolicies = new HashMap<>();
+    /**
+     * Every accepted capture's check, by the session nonce the device signed back as the capture's transactionId:
+     * a field can hold several face attempts, and each must carry the evidence of the check that let it through.
+     */
+    private final Map<String, Captured> capturedByNonce = new HashMap<>();
     private final Map<String, LivenessResult> pendingResults = new HashMap<>();
     private final Map<String, LivenessPolicy> pendingPolicies = new HashMap<>();
     /** When each field's last check passed, until a capture uses the pass. */
@@ -201,9 +206,14 @@ public final class LivenessSessionStore {
         if (!pendingResults.containsKey(key)) {
             return false;
         }
-        capturedResults.put(key, pendingResults.remove(key));
-        capturedPolicies.put(key, pendingPolicies.remove(key));
+        LivenessResult result = pendingResults.remove(key);
+        LivenessPolicy policy = pendingPolicies.remove(key);
+        capturedResults.put(key, result);
+        capturedPolicies.put(key, policy);
         capturedPassedAtEpochMs.put(key, pendingPassedAtEpochMs.remove(key));
+        if (result != null && result.nonce() != null) {
+            capturedByNonce.put(result.nonce(), new Captured(key, result, policy));
+        }
         return true;
     }
 
@@ -290,6 +300,28 @@ public final class LivenessSessionStore {
     /**
      * @param workflow the {@code Workflow} name
      * @param fieldId  the field
+     * @param nonce    the transactionId the device signed into the capture
+     * @return the result of the check whose pass let that capture of the field through, or null when none did
+     */
+    public synchronized LivenessResult capturedResult(String workflow, String fieldId, String nonce) {
+        Captured captured = nonce == null ? null : capturedByNonce.get(nonce);
+        return captured != null && captured.key.equals(key(workflow, fieldId)) ? captured.result : null;
+    }
+
+    /**
+     * @param workflow the {@code Workflow} name
+     * @param fieldId  the field
+     * @param nonce    the transactionId the device signed into the capture
+     * @return the policy of {@link #capturedResult(String, String, String)}, or null
+     */
+    public synchronized LivenessPolicy capturedPolicy(String workflow, String fieldId, String nonce) {
+        Captured captured = nonce == null ? null : capturedByNonce.get(nonce);
+        return captured != null && captured.key.equals(key(workflow, fieldId)) ? captured.policy : null;
+    }
+
+    /**
+     * @param workflow the {@code Workflow} name
+     * @param fieldId  the field
      * @return the policy of {@link #capturedResult}, or null
      */
     public synchronized LivenessPolicy capturedPolicy(String workflow, String fieldId) {
@@ -330,10 +362,24 @@ public final class LivenessSessionStore {
         passedAtMs.remove(key);
         passedAtEpochMs.remove(key);
         capturedPassedAtEpochMs.remove(key);
+        capturedByNonce.values().removeIf(captured -> captured.key.equals(key));
         dropPending(key);
     }
 
     private static String key(String workflow, String fieldId) {
         return workflow + "/" + fieldId;
+    }
+
+    /** An accepted capture's check, for its packet evidence. */
+    private static final class Captured {
+        final String key;
+        final LivenessResult result;
+        final LivenessPolicy policy;
+
+        Captured(String key, LivenessResult result, LivenessPolicy policy) {
+            this.key = key;
+            this.result = result;
+            this.policy = policy;
+        }
     }
 }
