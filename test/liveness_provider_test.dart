@@ -230,6 +230,20 @@ void main() {
     expect(provider.passedFor('OPERATOR_LOGIN', 'operatorAuth'), isTrue);
   });
 
+  test('TC-AND-07 a new registration also frees the exception photo the last resident used up', () async {
+    const exception = 'RESIDENT_EXCEPTION_PHOTO';
+    final photo = provider.start(exception, face);
+    service.pending!.complete(LivenessResultDto(
+        finalState: 'FAILED', decision: 'INCONCLUSIVE', errorCode: 'LIV-011', retryAllowed: false));
+    await photo;
+    expect(provider.blockedFor(exception, face), isTrue);
+
+    await provider.startNewRegistration();
+
+    expect(provider.blockedFor(exception, face), isFalse);
+    expect(service.resets, contains('$exception/$face'));
+  });
+
   test('TC-AND-02 resetAttempts refused natively reports false', () async {
     service.resetError = PlatformException(code: 'LIVENESS_IN_PROGRESS');
 

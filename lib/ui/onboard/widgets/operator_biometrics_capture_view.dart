@@ -6,9 +6,11 @@ import 'package:registration_client/model/biometric_attribute_data.dart';
 import 'package:registration_client/pigeon/biometrics_pigeon.dart';
 import 'package:registration_client/provider/biometric_capture_control_provider.dart';
 import 'package:registration_client/provider/global_provider.dart';
+import 'package:registration_client/provider/liveness_provider.dart';
 import 'package:registration_client/provider/registration_task_provider.dart';
 import 'package:registration_client/ui/onboard/widgets/operator_biometric_capture_scan_block_view.dart';
 import 'package:registration_client/utils/app_config.dart';
+import 'package:registration_client/utils/liveness_gate.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'package:responsive_grid_list/responsive_grid_list.dart';
 
@@ -35,6 +37,9 @@ class _OperatorBiometricsCaptureState
     biometricCaptureControlProvider =
         Provider.of<BiometricCaptureControlProvider>(context, listen: false);
     super.initState();
+    // Each onboarding is one workflow instance (TECHNICAL_DESIGN §6.2): an earlier operator's failed face checks
+    // never block this one
+    context.read<LivenessProvider>().resetAttempts(LivenessGate.onboardingWorkflow, 'operatorBiometrics');
   }
 
   Widget _getBiometricCaptureSelectionBlockMobile(

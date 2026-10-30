@@ -18,7 +18,6 @@ import 'package:registration_client/ui/process_ui/process_type.dart';
 
 import 'package:registration_client/ui/widgets/language_component.dart';
 import 'package:registration_client/utils/app_config.dart';
-import 'package:registration_client/utils/liveness_gate.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 
 class LanguageSelector extends StatefulWidget {
@@ -108,8 +107,8 @@ class _LanguageSelectorState extends State<LanguageSelector> {
         widget.newProcess.id!,
         latitude: latitude,
         longitude: longitude);
-    // A new resident starts with all face liveness attempts again
-    await livenessProvider.resetWorkflow(LivenessGate.residentWorkflow);
+    // A new resident starts with all face and exception photo liveness attempts again
+    await livenessProvider.startNewRegistration();
 
     registrationTaskProvider.addDemographicField("preferredLang",
         globalProvider.fieldInputValue["preferredLang"].toString());

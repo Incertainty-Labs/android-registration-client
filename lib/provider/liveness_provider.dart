@@ -166,6 +166,12 @@ class LivenessProvider with ChangeNotifier {
     }
   }
 
+  /// Starts a new resident's attempts: their face and their exception photo (TECHNICAL_DESIGN §6.2, one resident).
+  Future<void> startNewRegistration() async {
+    await resetWorkflow('RESIDENT_REGISTRATION');
+    await resetWorkflow('RESIDENT_EXCEPTION_PHOTO');
+  }
+
   /// Starts every field [workflow] ran again, e.g. when a new registration starts.
   Future<void> resetWorkflow(String workflow) async {
     for (final fieldId in List.of(_fields[workflow] ?? <String>{})) {
