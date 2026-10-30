@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -101,6 +103,21 @@ void main() {
 
     expect(service.testOverrides, 'enabled=true;mode=ACTIVE');
     expect(service.starts, 1);
+  });
+
+  testWidgets('B-21 leaving the page while Start is still sending the scenario is safe', (tester) async {
+    service.heldTestOverrides = Completer<void>();
+    await tester.pumpWidget(app(const LivenessTestPage()));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('liveness-test-start')));
+    await tester.pump();
+
+    await tester.pumpWidget(app(const SizedBox()));
+    service.heldTestOverrides!.complete();
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(service.starts, 0);
   });
 
   testWidgets('B-21 the field is a test-only id for every workflow', (tester) async {

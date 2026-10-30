@@ -20,6 +20,9 @@ class FakeLivenessService implements LivenessService {
   Object? resetError;
   String? testOverrides;
   Object? testOverridesError;
+
+  /// When set, setTestOverrides waits for it.
+  Completer<void>? heldTestOverrides;
   AuthResultDto authResult = AuthResultDto(authenticated: true);
   final List<String> authCalls = [];
   final List<String> seeded = [];
@@ -66,6 +69,7 @@ class FakeLivenessService implements LivenessService {
   @override
   Future<void> setTestOverrides(String overrides) async {
     if (testOverridesError != null) throw testOverridesError!;
+    if (heldTestOverrides != null) await heldTestOverrides!.future;
     testOverrides = overrides;
   }
 }

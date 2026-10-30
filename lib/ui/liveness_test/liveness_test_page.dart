@@ -114,6 +114,10 @@ class _LivenessTestPageState extends State<LivenessTestPage> {
 
   Future<void> _start() async {
     final code = await _provider.useTestScenario(scenario);
+    if (!mounted) {
+      // The page closed meanwhile: no check for a page that is gone
+      return;
+    }
     setState(() => refused = code);
     if (code == null) {
       _loadHints();
