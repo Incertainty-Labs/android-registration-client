@@ -379,6 +379,21 @@ public class LivenessActivityTest {
     }
 
     @Test
+    public void tcEng_engineReadyAfterTheScreenIsGone_startsNoSession() {
+        java.util.List<Runnable> loading = new java.util.ArrayList<>();
+        EngineHolder holder = new EngineHolder();
+        holder.start(loading::add, () -> LivenessEngines.stub(Collections.emptyMap()));
+        LivenessActivity.engines = holder;
+        ActivityController<LivenessActivity> controller = launch(null);
+        controller.pause().stop().destroy();
+
+        loading.remove(0).run();
+        Shadows.shadowOf(Looper.getMainLooper()).idle();
+
+        assertNull("a session started on a destroyed screen", binder.analyzer);
+    }
+
+    @Test
     public void tcEng_engineThatFailsToLoad_offersOnlyCloseAndReturnsLiv013() {
         EngineHolder holder = new EngineHolder();
         holder.start(Runnable::run, () -> {
@@ -391,6 +406,23 @@ public class LivenessActivityTest {
         assertEquals(View.VISIBLE, activity.findViewById(R.id.liveness_close).getVisibility());
         assertNull("camera bound without an engine", binder.analyzer);
         activity.findViewById(R.id.liveness_close).performClick();
+        LivenessResultSummary summary = result(activity);
+        assertEquals("ERROR", summary.finalState());
+        assertEquals("LIV-013", summary.errorCode());
+    }
+
+    @Test
+    public void tcUx_s14_backOnTheEngineErrorScreen_alsoReturnsLiv013() {
+        EngineHolder holder = new EngineHolder();
+        holder.start(Runnable::run, () -> {
+            throw new LivenessException(LivenessErrorCode.ENGINE_ERROR, "model hash mismatch");
+        });
+        LivenessActivity.engines = holder;
+        LivenessActivity activity = launch(null).get();
+        Shadows.shadowOf(Looper.getMainLooper()).idle();
+
+        activity.getOnBackPressedDispatcher().onBackPressed();
+
         LivenessResultSummary summary = result(activity);
         assertEquals("ERROR", summary.finalState());
         assertEquals("LIV-013", summary.errorCode());

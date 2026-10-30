@@ -122,6 +122,32 @@ public class Biometrics095ServiceFreshnessTest {
         assertEquals("REG-LIV-014", e.getErrorCode());
     }
 
+    @Test
+    public void tcFresh_livenessOff_aCaptureSignedWithinMosipsAllowedLag_isAccepted() throws Exception {
+        // No liveness pass: the reference is when the request was sent, and a slow capture or a device clock a
+        // minute or two off is within MOSIP's own response lag (validateResponseTimestamp), as before B-07
+        List<BiometricsDto> fingers = handleWithoutLiveness(NONCE, "2026-10-25T10:01:30Z");
+
+        assertEquals(1, fingers.size());
+    }
+
+    @Test
+    public void tcFresh_livenessOff_aCaptureThatDoesNotEchoTheNonce_stillFailsWithLiv014() {
+        CaptureNotFreshException e = assertThrows(CaptureNotFreshException.class,
+                () -> handleWithoutLiveness("ffffffffffffffffffffffffffffffff", "2026-10-25T10:00:05Z"));
+
+        assertEquals("REG-LIV-014", e.getErrorCode());
+    }
+
+    /** A capture with liveness off: the ticket's reference is the request time, and it names no workflow. */
+    private List<BiometricsDto> handleWithoutLiveness(String signedTransactionId, String signedTimestamp)
+            throws Exception {
+        CaptureFreshnessTicket ticket = new CaptureFreshnessTicket(NONCE, PASSED_AT, MAX_AGE_MS, null,
+                "individualBiometrics");
+        return service.handleRCaptureResponse(Modality.FACE, response(signedTransactionId, signedTimestamp),
+                Collections.emptyList(), ticket, false);
+    }
+
     private List<BiometricsDto> handle(String signedTransactionId, String signedTimestamp) throws Exception {
         CaptureFreshnessTicket ticket = new CaptureFreshnessTicket(NONCE, PASSED_AT, MAX_AGE_MS,
                 "RESIDENT_REGISTRATION", "individualBiometrics");

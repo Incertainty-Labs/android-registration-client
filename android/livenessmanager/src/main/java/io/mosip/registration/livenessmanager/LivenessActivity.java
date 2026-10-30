@@ -216,6 +216,8 @@ public class LivenessActivity extends ComponentActivity {
         if (rationale != null) {
             rationale.dismiss();
         }
+        // An engine that becomes ready after this must not start a session on a screen that is gone
+        sessionGeneration++;
         stopSession();
         handler.removeCallbacksAndMessages(null);
         super.onDestroy();
@@ -366,6 +368,9 @@ public class LivenessActivity extends ComponentActivity {
     private void cancel() {
         if (recorded != null) {
             finishWith(recorded);
+        } else if (pendingError != null && pendingError.errorCode() == LivenessErrorCode.ENGINE_ERROR) {
+            // S14 offers only Close: Back means the same, so the engine error is returned and audited
+            finishWith(pendingError);
         } else {
             finishWith(LivenessResult.builder(SessionState.CANCELLED, Decision.INCONCLUSIVE).build());
         }

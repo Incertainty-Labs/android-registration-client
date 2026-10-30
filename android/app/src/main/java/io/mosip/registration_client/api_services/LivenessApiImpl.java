@@ -5,6 +5,7 @@ import android.content.Intent;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.VisibleForTesting;
 
 import java.security.SecureRandom;
 import java.util.Collections;
@@ -53,12 +54,6 @@ public class LivenessApiImpl implements LivenessPigeon.LivenessApi {
     static final String LIVENESS_REQUIRED = "LIVENESS_REQUIRED";
     static final String FACE_AUTH_NOT_ALLOWED = "FACE_AUTH_NOT_ALLOWED";
 
-    /**
-     * How long a liveness pass covers the face authentication that follows it: the pass, the capture and the match
-     * happen within seconds, so the window is short to narrow a face swap between them.
-     */
-    static final long AUTH_PASS_MAX_AGE_MS = 30_000L;
-
     private static final String TAG = LivenessApiImpl.class.getSimpleName();
     private static final String SYNCED_PATTERN = LivenessConfigLoader.PREFIX + "%";
     private static final String DIAGNOSTICS_KEY = LivenessConfigLoader.PREFIX + "diagnostics.enabled";
@@ -71,7 +66,7 @@ public class LivenessApiImpl implements LivenessPigeon.LivenessApi {
     private final boolean testScreen;
     /** Overrides set from the B-21 test screen, applied on top of the build's; "" for none. */
     private String testOverrides = "";
-    private final LivenessSessionStore store = LivenessSessionStore.shared();
+    private final LivenessSessionStore store;
     private Activity activity;
 
     /** Operator and supervisor face authentication (B-09); null until {@link #setFaceAuth}. */
@@ -93,6 +88,14 @@ public class LivenessApiImpl implements LivenessPigeon.LivenessApi {
      */
     public LivenessApiImpl(GlobalParamRepository globalParamRepository, LocalConfigService localConfigService,
                            String overrides, boolean testScreen) {
+        this(globalParamRepository, localConfigService, overrides, testScreen, LivenessSessionStore.shared());
+    }
+
+    /** @param store the session store, for tests on a controlled clock; the app uses {@link LivenessSessionStore#shared()} */
+    @VisibleForTesting
+    LivenessApiImpl(GlobalParamRepository globalParamRepository, LocalConfigService localConfigService,
+                    String overrides, boolean testScreen, LivenessSessionStore store) {
+        this.store = store;
         this.globalParamRepository = globalParamRepository;
         this.localConfigService = localConfigService;
         this.overrides = overrides;
@@ -411,6 +414,7 @@ public class LivenessApiImpl implements LivenessPigeon.LivenessApi {
             result.error(error(LIVENESS_BAD_REQUEST, "Unknown workflow " + workflow));
             return;
         }
+        LivenessPolicy policy = LivenessConfigLoader.load(config(), parsed);
         String captureNonce = operatorAuthCapture == null ? null : operatorAuthCapture.transactionId();
         List<BiometricsDto> capture = operatorAuthCapture == null ? Collections.emptyList()
                 : operatorAuthCapture.take();
@@ -420,10 +424,10 @@ public class LivenessApiImpl implements LivenessPigeon.LivenessApi {
             // Until B-07, the matched face is not bound to the live session, so no field build authenticates by face
             errorCode = FACE_AUTH_NOT_ALLOWED;
             messageKey = "liveness.auth.unavailable";
-        } else if (!LivenessConfigLoader.load(config(), parsed).enabled()) {
+        } else if (!policy.enabled()) {
             errorCode = LIVENESS_DISABLED;
             messageKey = "liveness.auth.unavailable";
-        } else if (!store.consumePass(workflow, OperatorAuthCapture.FIELD_ID, AUTH_PASS_MAX_AGE_MS)
+        } else if (!store.consumePass(workflow, OperatorAuthCapture.FIELD_ID, captureWindowMs(policy))
                 || !madeForThisPass(workflow, captureNonce)) {
             errorCode = LIVENESS_REQUIRED;
             messageKey = "liveness.fail.try_again";
