@@ -276,6 +276,9 @@ public class Biometrics095Service extends BiometricsService {
 
 
     /** LIV-014 unless the device signed the ticket's nonce back within its window of the reference time. */
+    /** MOSIP's response lag (BiometricsService.allowedResponseLagMins, 5 minutes), for captures with liveness off. */
+    static final long NO_LIVENESS_MAX_AGE_MS = 5 * 60_000L;
+
     private static void checkFreshness(CaptureFreshnessTicket ticket, CaptureDto signed) throws CaptureNotFreshException {
         long signedAt;
         try {
@@ -283,8 +286,12 @@ public class Biometrics095Service extends BiometricsService {
         } catch (RuntimeException e) {
             throw new CaptureNotFreshException("signed timestamp unreadable: " + signed.getTimestamp());
         }
+        // With no liveness pass to be fresh against, the nonce still binds the capture to this request, but its time
+        // keeps MOSIP's own allowance (validateResponseTimestamp), so a slow finger or iris capture still works
+        long maxAgeMs = ticket.workflow() == null ? Math.max(ticket.maxAgeMs(), NO_LIVENESS_MAX_AGE_MS)
+                : ticket.maxAgeMs();
         CaptureFreshness.Check check = CaptureFreshness.verify(ticket.nonce(), signed.getTransactionId(), signedAt,
-                ticket.referenceEpochMs(), ticket.maxAgeMs());
+                ticket.referenceEpochMs(), maxAgeMs);
         if (!check.fresh()) {
             throw new CaptureNotFreshException(check.reason());
         }
