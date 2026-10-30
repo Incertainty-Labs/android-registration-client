@@ -397,6 +397,23 @@ public class LivenessActivityTest {
     }
 
     @Test
+    public void tcUx_s14_backOnTheEngineErrorScreen_alsoReturnsLiv013() {
+        EngineHolder holder = new EngineHolder();
+        holder.start(Runnable::run, () -> {
+            throw new LivenessException(LivenessErrorCode.ENGINE_ERROR, "model hash mismatch");
+        });
+        LivenessActivity.engines = holder;
+        LivenessActivity activity = launch(null).get();
+        Shadows.shadowOf(Looper.getMainLooper()).idle();
+
+        activity.getOnBackPressedDispatcher().onBackPressed();
+
+        LivenessResultSummary summary = result(activity);
+        assertEquals("ERROR", summary.finalState());
+        assertEquals("LIV-013", summary.errorCode());
+    }
+
+    @Test
     public void tcAnd_requestWithoutWorkflow_finishesWithoutAResult() {
         Intent intent = new Intent(app, LivenessActivity.class);
 
